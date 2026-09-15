@@ -205,7 +205,13 @@ def cmd_run(a):
             "--tiers requires --profile legacy; everyday selects one tier per resource"
         )
     man = mf.Manifest(a.db)
-    engine = Engine(a.models, device=a.device, tile=a.tile, allow_fallback=not a.strict)
+    engine = Engine(
+        a.models,
+        device=a.device,
+        tile=a.tile,
+        tile_batch=a.tile_batch,
+        allow_fallback=not a.strict,
+    )
     print(
         "engine: device={} models={} ({}) texconv={}".format(
             engine.device,
@@ -1200,6 +1206,15 @@ def main(argv=None):
     # only ever the thing you had to remember to override. A 4070 Super holds a 512 tile
     # comfortably and it means fewer seams and fewer model calls per texture.
     p.add_argument("--tile", type=int, default=512)
+    # Tiles of one texture are independent, so they batch. A 2048 source at --tile 512 is 16
+    # tiles in 4 shape groups, so 4 forward passes instead of 16 -- the same arithmetic, fewer
+    # launches, and the VRAM a single tile leaves idle put to work. Lowered automatically on OOM.
+    p.add_argument(
+        "--tile-batch",
+        type=int,
+        default=4,
+        help="tiles of one texture per forward pass (1 disables tile batching)",
+    )
     p.add_argument(
         "--strict",
         action="store_true",

@@ -50,7 +50,16 @@ RECOMMENDED_REGISTRY = {
 class Engine:
     # tile defaults to 512 to match the CLI, so constructing an Engine directly behaves the
     # same as running the command. The two drifting apart is how a "default" stops meaning one.
-    def __init__(self, models_dir, device=None, tile=512, pad=16, fp16=True, allow_fallback=True):
+    def __init__(
+        self,
+        models_dir,
+        device=None,
+        tile=512,
+        pad=16,
+        fp16=True,
+        allow_fallback=True,
+        tile_batch=4,
+    ):
         self.models_dir = models_dir
         self.registry = dict(DEFAULT_REGISTRY)
         # registry.json beside the weights first, then the tracked one in scripts-local\clarity-upscale\models
@@ -61,6 +70,10 @@ class Engine:
             if reg and os.path.isfile(reg):
                 self.registry.update(read_json(reg))
         self.tile, self.pad, self.fp16 = tile, pad, fp16
+        # Tiles of one source are independent, so they go through as one batched forward pass
+        # rather than one call each. This is the cap on how many; it is lowered in place on the
+        # first CUDA OOM and stays lowered, so a run that guesses too high pays for it once.
+        self.tile_batch = max(1, int(tile_batch))
         self.allow_fallback = allow_fallback
         self._models = {}
         self.torch = None
@@ -202,6 +215,14 @@ class Engine:
         return ys if batch else ys[0]
 
     def _tiled(self, m, t, ms):
+        """One forward pass per tile group, writing each tile into its place in the output.
+
+        Tiles are grouped by the shape actually extracted -- the padded window is narrower at the
+        image edges -- and each group goes through the model as one batch. Padding the edge tiles
+        up to a common size instead would feed the model invented border content and change the
+        result; grouping leaves every tile's input tensor exactly what it is tile-by-tile, and the
+        batch dimension never mixes, so the output is bitwise what the sequential loop produced.
+        """
         torch = self._torch()
         N, _C, H, W = t.shape
         tile, pad = self.tile, self.pad
@@ -209,18 +230,40 @@ class Engine:
             with torch.no_grad():
                 return m(_pad8(t))[:, :, : H * ms, : W * ms]
         out = torch.zeros((N, m.output_channels, H * ms, W * ms), dtype=t.dtype, device=t.device)
+        groups: dict[tuple[int, int], list[tuple[int, int, int, int, int, int]]] = {}
         for y0 in range(0, H, tile):
             for x0 in range(0, W, tile):
                 y1, x1 = min(H, y0 + tile), min(W, x0 + tile)
                 py0, px0 = max(0, y0 - pad), max(0, x0 - pad)
                 py1, px1 = min(H, y1 + pad), min(W, x1 + pad)
-                with torch.no_grad():
-                    o = m(_pad8(t[:, :, py0:py1, px0:px1]))
-                oy, ox = (y0 - py0) * ms, (x0 - px0) * ms
-                out[:, :, y0 * ms : y1 * ms, x0 * ms : x1 * ms] = o[
-                    :, :, oy : oy + (y1 - y0) * ms, ox : ox + (x1 - x0) * ms
-                ]
+                groups.setdefault((py1 - py0, px1 - px0), []).append((y0, x0, y1, x1, py0, px0))
+        for (dh, dw), windows in groups.items():
+            s = 0
+            while s < len(windows):
+                chunk = windows[s : s + max(1, self.tile_batch // N)]
+                try:
+                    self._tile_chunk(m, t, ms, out, chunk, dh, dw, n_img=N)
+                except RuntimeError as e:  # CUDA OOM: halve the cap, keep it halved, retry
+                    if "out of memory" not in str(e).lower() or len(chunk) == 1:
+                        raise
+                    torch.cuda.empty_cache()
+                    self.tile_batch = max(1, (len(chunk) * N) // 2)
+                    continue
+                s += len(chunk)
         return out
+
+    def _tile_chunk(self, m, t, ms, out, chunk, dh, dw, n_img):
+        """Run one group of equally shaped tiles and scatter the results into `out`."""
+        torch = self._torch()
+        views = [t[:, :, py0 : py0 + dh, px0 : px0 + dw] for _, _, _, _, py0, px0 in chunk]
+        sub = views[0] if len(views) == 1 else torch.cat(views, 0)
+        with torch.no_grad():
+            o = m(_pad8(sub))
+        for j, (y0, x0, y1, x1, py0, px0) in enumerate(chunk):
+            oy, ox = (y0 - py0) * ms, (x0 - px0) * ms
+            out[:, :, y0 * ms : y1 * ms, x0 * ms : x1 * ms] = o[
+                j * n_img : (j + 1) * n_img, :, oy : oy + (y1 - y0) * ms, ox : ox + (x1 - x0) * ms
+            ]
 
 
 def _pad8(t):

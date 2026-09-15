@@ -47,6 +47,10 @@ uv sync
 uv run clarity where
 ```
 
+Or, as a package: `uv pip install xivupscaler` (or `pip install xivupscaler`) gives you a
+`clarity` command. An installed copy resolves its project directory from `CLARITY_PROJECT`,
+else the directory you run it from.
+
 `clarity where` prints the resolved layout — database, models, texconv, shared tools, path list —
 and marks anything missing. Run it before anything else; it answers most setup questions on its own.
 
@@ -94,6 +98,19 @@ After a patch, `fingerprint --check` reports changed / unchanged / gone against 
 and `--requeue` puts the changed rows back to `planned`. The re-upscale set is computed, not
 remembered.
 
+## Development
+
+```
+uv sync                        # runtime + dev tools
+uv run ruff check .            # lint
+uv run ruff format --check .   # formatting
+uv run ty check                # types
+uv run pytest --cov            # tests; no game, GPU or weights needed
+uv build && uvx twine check dist/*
+```
+
+`CONTRIBUTING.md` has the layout, the conventions and the list of things that bite.
+
 ---
 
 ## Upscaling models
@@ -109,18 +126,18 @@ file names.
 | slot | file | arch | author | license | source |
 |---|---|---|---|---|---|
 | `bc1clean` | `1x_BC1-smooth2.pth` | ESRGAN | BlueAmulet | **CC-BY-NC-4.0** | [OpenModelDB](https://openmodeldb.info/models/1x-BC1-smooth2) |
-| `normal` | `4x-Normal-RG0-BC7.pth` | — | RunDevelopment | CC-BY-4.0 † | [rundev-models](https://github.com/RunDevelopment/rundev-models/blob/main/normals/README.md) |
-| `normal_bc1` | `4x-Normal-RG0-BC1.pth` | — | RunDevelopment | CC-BY-4.0 † | [rundev-models](https://github.com/RunDevelopment/rundev-models/blob/main/normals/README.md) |
+| `normal` | `4x-Normal-RG0-BC7.pth` | ESRGAN | RunDevelopment | CC0-1.0 | [OpenModelDB](https://openmodeldb.info/models/4x-Normal-RG0-BC7) · [rundev-models](https://github.com/RunDevelopment/rundev-models/blob/main/normals/README.md) |
+| `normal_bc1` | `4x-Normal-RG0-BC1.pth` | ESRGAN | RunDevelopment | CC0-1.0 | [OpenModelDB](https://openmodeldb.info/models/4x-Normal-RG0-BC1) · [rundev-models](https://github.com/RunDevelopment/rundev-models/blob/main/normals/README.md) |
 | `color` | `4x-PBRify_UpscalerV4.pth` | DAT2 | Kim2091 | CC0-1.0 | [OpenModelDB](https://openmodeldb.info/models/4x-PBRify-UpscalerV4) · [release](https://github.com/Kim2091/Kim2091-Models/releases/tag/4x-PBRify_UpscalerV4) |
 | `color_v3` | `4x-PBRify_RPLKSRd_V3.pth` | RealPLKSR_dysample | Kim2091 | CC0-1.0 | [OpenModelDB](https://openmodeldb.info/models/4x-PBRify-RPLKSRd-V3) · [release](https://github.com/Kim2091/Kim2091-Models/releases/tag/4x-PBRify_RPLKSRd_V3) |
 | `mask` | `4x-PBRify_UpscalerSPANV4.pth` | SPAN | Kim2091 | CC0-1.0 | [OpenModelDB](https://openmodeldb.info/models/4x-PBRify-UpscalerSPANV4) · [PBRify_Remix](https://github.com/Kim2091/PBRify_Remix) |
 | `face` | `4xFaceUpDAT.pth` | DAT | Helaman (Philip Hofmann) | CC-BY-4.0 | [OpenModelDB](https://openmodeldb.info/models/4x-FaceUpDAT) · [Hugging Face](https://huggingface.co/Phips/4xFaceUpDAT) |
 | `skin` | `x1_ITF_SkinDiffDDS_v1.pth` | ESRGAN | intheflesh | **CC-BY-NC-4.0** | [OpenModelDB](https://openmodeldb.info/models/1x-ITF-SkinDiffDDS-v1) |
-| `ui` | `4x-UltraSharpV2.safetensors` | — | Kim2091 | **CC-BY-NC-SA-4.0** | [Hugging Face](https://huggingface.co/Kim2091/UltraSharpV2) · [release](https://github.com/Kim2091/Kim2091-Models/releases/tag/4x-UltraSharpV2) |
+| `ui` | `4x-UltraSharpV2.safetensors` | DAT2 | Kim2091 | **CC-BY-NC-SA-4.0** | [OpenModelDB](https://openmodeldb.info/models/4x-UltraSharpV2) · [Hugging Face](https://huggingface.co/Kim2091/UltraSharpV2) · [release](https://github.com/Kim2091/Kim2091-Models/releases/tag/4x-UltraSharpV2) |
 
-† The normals models carry no per-model license statement. `CC-BY-4.0` is the licence of the
-`rundev-models` repository they are distributed from, and applies by inheritance rather than by an
-explicit declaration on the models themselves.
+Every model here was sourced from [OpenModelDB](https://openmodeldb.info), so its listing is given
+first on every row and is the licence of record. Mirrors and the authors' own release pages follow
+it, for when a download link rots or you want the training notes.
 
 ### Three of these are NonCommercial, and it reaches the output
 
@@ -135,8 +152,10 @@ produces, not merely with the weights file. Textures generated through those thr
 therefore be treated as carrying NonCommercial terms, and the UI slot additionally carries
 ShareAlike. The remaining six are CC0 or attribution-only.
 
-The three Kim2091 PBRify models (`color`, `color_v3`, `mask`) are **CC0-1.0** and impose no
-conditions at all, so a pipeline restricted to those slots has no inherited obligations.
+**Five of the nine are CC0-1.0** and impose no conditions at all — the three Kim2091 PBRify models
+(`color`, `color_v3`, `mask`) and both RunDevelopment normals models (`normal`, `normal_bc1`). A
+pipeline restricted to those five slots inherits no obligations whatsoever. `face` is
+attribution-only.
 
 None of this is legal advice, and XIVUpscaler's own licence does not and cannot override any of it.
 Read each model's terms at the links above before distributing anything you generate.

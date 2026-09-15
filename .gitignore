@@ -1,22 +1,28 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
-
-# Python Environments
 .venv/
-.python-version
+*.egg-info/
+dist/
+build/
 
-# IDEs / Editor
+# Tooling caches and reports
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Editors
 .vscode/
 .idea/
 
-# FFXIV Asset Types (ignore raw loose files, unless explicitly added)
+# Game assets and generated textures are never tracked; hash-manifests/ guards them
 *.tex
 *.dds
 *.mtrl
 *.shpk
-
-# Images / Archives / DBs
 *.png
 *.tga
 *.7z
@@ -25,17 +31,10 @@ __pycache__/
 *.db
 *.pmp
 
-# XIVUpscaler Pipeline Folders
+# Project directories that hold bulk data (see clarity/paths.py)
 build-output/
 analysis-specimens/
 temp-scratch/
 vendor-tools/
 hash-manifests/
 benchmarks/
-
-# Scripts & temporary rewrites
-rewrite.sh
-rewrite.ps1
-rewrite.py
-
-.coverage

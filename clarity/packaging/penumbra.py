@@ -259,7 +259,7 @@ def merge_icon_twins(
     config_dir, twins, interface_guid="6e1d5b0a-4c2f-4a1e-9a7b-2f8e3c9d1a01", bump=40
 ):
     """twins: {original mod dir name: twin dir name}. The twin goes to
-    `9 Interface/Icons — upscaled (G6)/<prio+bump> <name> (upscaled)` and is enabled in the
+    `9 Interface/Icons - upscaled (G6)/<prio+bump> <name> (upscaled)` and is enabled in the
     Interface collection at the original's priority + bump, so it wins over the original."""
     if os.path.isfile(os.path.join(config_dir, "mod_data.db")):
         raise RuntimeError(
@@ -276,7 +276,7 @@ def merge_icon_twins(
         if coll and orig in coll["Settings"]:
             prio = coll["Settings"][orig].get("Priority", 900)
         label = os.path.basename(twin)
-        so["Data"][label] = "9 Interface/Icons — upscaled (G6)/%03d %s" % (
+        so["Data"][label] = "9 Interface/Icons - upscaled (G6)/%03d %s" % (
             prio + bump,
             label,
         )

@@ -99,8 +99,14 @@ def requested_tier(family, role, path, profile="everyday"):
 def generation_tier(family, role, path, w, h, override=None, profile="everyday"):
     if override or profile == "legacy":
         return roles.top_tier(family, w, h, override)
+    policy_tier, cap = roles.POLICY.get(family, (None, 0))
+    if policy_tier is None:
+        # No tier means "never process" (human-hair, vfx, and any family the policy does
+        # not name). top_tier() and skip_reason() both return None here; this must too, or
+        # `run --family human-hair` walks past the `top is None` guard and produces
+        # native-tier products for a family the policy excludes.
+        return None
     target = requested_tier(family, role, path, profile)
-    cap = roles.POLICY.get(family, (None, 0))[1]
     scale = roles.TIER_SCALE[target]
     while scale > 1 and (max(w, h) > cap or max(w, h) * scale > roles.MAX_EDGE_OUT):
         scale //= 2

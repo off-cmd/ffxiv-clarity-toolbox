@@ -64,3 +64,15 @@ def test_every_catalog_family_survives_a_4x_policy_lookup() -> None:
     for fam in families:
         # The lookup export() performs for --profile 4x; must never KeyError.
         roles.POLICY.get(fam, (None, 0))[0]
+
+
+@pytest.mark.parametrize("family", ["human-hair", "vfx", "common"])
+def test_generation_tier_is_none_for_families_the_policy_excludes(family) -> None:
+    # top_tier() and skip_reason() both say "never"; generation_tier used to say "native".
+    assert roles.top_tier(family, 512, 512) is None
+    assert release.generation_tier(family, "color", "x.tex", 512, 512) is None
+
+
+def test_generation_tier_still_caps_processed_families() -> None:
+    assert release.generation_tier("equipment", "color", "x_d.tex", 512, 512) == "2x"
+    assert release.generation_tier("equipment", "normal", "x_n.tex", 512, 512) == "native"

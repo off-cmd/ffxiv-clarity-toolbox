@@ -22,7 +22,7 @@ Offsets that reference the blob, all u32 unless noted:
 
 import struct
 
-import mdlpatch
+from . import mdlpatch
 
 HDR = 0x44
 

@@ -329,9 +329,7 @@ def encode_tiers(rgba_top, fmt=BC7, attributes=None, offsets=(0,), keep_mips=Tru
             _texconv(a, name, 0), kb.texwrite.BLOCK_BYTES[fmt], w, h, n
         )  # -m 0: the full chain
     elif fmt == BC7:
-        import bc7enc
-
-        levels = [bc7enc.encode(L) for L in float_chain(a, n)]
+        levels = [kb.bc7enc.encode(L) for L in float_chain(a, n)]
     elif fmt == BC3:
         import io
 

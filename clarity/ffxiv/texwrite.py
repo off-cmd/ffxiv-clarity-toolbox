@@ -123,7 +123,7 @@ def write_blocks(fmt, levels_blocks, w, h, attributes=ATTR_2D):
 def write_bc7(rgba, mips=None, attributes=ATTR_2D, modes=(6, 5)):
     """RGBA (h, w, 4) -> BC7 .tex with a full mip chain (tools/bc7enc). `modes=(6,)` is about
     twice as fast and only loses a little on blocks whose alpha varies sharply."""
-    import bc7enc
+    from . import bc7enc
 
     a = np.asarray(rgba, np.uint8)
     h, w = a.shape[:2]

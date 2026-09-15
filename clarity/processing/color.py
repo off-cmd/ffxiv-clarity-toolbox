@@ -1,19 +1,14 @@
 """Processing logic for color (albedo/diffuse) maps."""
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import numpy.typing as npt
 
 from . import engine as eng
-from .utils import _f, average_color_fix, gray, has_alpha
-
-if TYPE_CHECKING:
-    from .engine import Engine
+from .utils import Upscaler, _f, average_color_fix, gray, has_alpha
 
 
 def do_color(
-    engine: "Engine",
+    engine: Upscaler,
     rgba: npt.NDArray[np.uint8],
     scale: int,
     src_fmt: str | None,

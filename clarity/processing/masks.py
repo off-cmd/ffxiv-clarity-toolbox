@@ -1,18 +1,13 @@
 """Processing logic for material control masks."""
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import numpy.typing as npt
 
-from .utils import _f, has_alpha
-
-if TYPE_CHECKING:
-    from .engine import Engine
+from .utils import Upscaler, _f, has_alpha
 
 
 def do_mask(
-    engine: "Engine",
+    engine: Upscaler,
     rgba: npt.NDArray[np.uint8],
     scale: int,
     src_fmt: str | None,

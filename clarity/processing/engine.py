@@ -251,11 +251,12 @@ def lanczos(img, scale):
     nh, nw = max(1, round(H * scale)), max(1, round(W * scale))
     out = np.empty((nh, nw, C), np.float32)
     for c in range(C):
-        im = Image.fromarray((np.clip(img[..., c], 0, 1) * 65535).astype(np.uint16), "I;16")
-        out[..., c] = (
-            np.asarray(im.resize((nw, nh), Image.Resampling.LANCZOS), np.float32) / 65535.0
-        )
-    return out
+        # Resample in float32 ("F") rather than through a 16-bit integer image: Pillow 13
+        # removes the `mode=` argument fromarray() needed for "I;16", and the float path
+        # loses nothing, since the input is float32 already.
+        im = Image.fromarray(np.clip(img[..., c], 0, 1).astype(np.float32))
+        out[..., c] = np.asarray(im.resize((nw, nh), Image.Resampling.LANCZOS), np.float32)
+    return np.clip(out, 0, 1)
 
 
 def box_down(img, factor):

@@ -1,18 +1,13 @@
 """Processing logic for UI elements (icons, ULD sheets)."""
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import numpy.typing as npt
 
-from .utils import _f, gray, has_alpha
-
-if TYPE_CHECKING:
-    from .engine import Engine
+from .utils import Upscaler, _f, gray, has_alpha
 
 
 def do_ui(
-    engine: "Engine",
+    engine: Upscaler,
     rgba: npt.NDArray[np.uint8],
     scale: int,
     src_fmt: str | None,  # noqa: ARG001 - uniform ROLE_FN signature
@@ -49,7 +44,7 @@ def do_ui(
 
 
 def do_ui_batch(
-    engine: "Engine", rgbas: list[npt.NDArray[np.uint8]], scale: int
+    engine: Upscaler, rgbas: list[npt.NDArray[np.uint8]], scale: int
 ) -> list[npt.NDArray[np.float32]]:
     """Upscale a batch of UI textures simultaneously.
 

@@ -1,14 +1,33 @@
 """Utility functions for processing FFXIV textures."""
 
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 import numpy as np
 import numpy.typing as npt
 
 from . import engine as eng
 
-if TYPE_CHECKING:
-    from .engine import Engine
+
+class Upscaler(Protocol):
+    """What a role function needs from the inference engine.
+
+    ``engine.Engine`` is the real one. The role modules only ever call these four methods,
+    so this is the whole contract -- and the reason a test can stand in a numpy fake.
+    """
+
+    def has(self, slot: str) -> bool:
+        """Whether ``slot`` has a loadable weight file (and torch is present)."""
+
+    def enabled(self, slot: str) -> bool:
+        """Whether ``slot`` is switched on in the registry (``null`` means deliberately off)."""
+
+    def run(self, slot: str, img: npt.NDArray[np.floating], scale: int) -> npt.NDArray[np.float32]:
+        """Upscale one float32 ``(H, W, C)`` image in ``[0, 1]`` by ``scale``."""
+
+    def run_batch(
+        self, slot: str, imgs: list[npt.NDArray[np.floating]], scale: int
+    ) -> list[npt.NDArray[np.float32]]:
+        """``run`` over a list, batched on the device when the shapes allow."""
 
 
 def _f(u8: npt.NDArray[np.uint8]) -> npt.NDArray[np.float32]:
@@ -27,7 +46,7 @@ def nearest(ch: npt.NDArray[Any], scale: int) -> npt.NDArray[Any]:
 
 
 def gray(
-    engine: "Engine", ch: npt.NDArray[np.float32], scale: int, slot: str = "mask"
+    engine: Upscaler, ch: npt.NDArray[np.float32], scale: int, slot: str = "mask"
 ) -> npt.NDArray[np.float32]:
     """Upscale a single scalar channel by passing it through a model as replicated RGB."""
     if scale == 1:

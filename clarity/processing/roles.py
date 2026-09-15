@@ -1,7 +1,5 @@
 """Top-level dispatch for role-based texture processing."""
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import numpy.typing as npt
 
@@ -10,10 +8,7 @@ from .color import do_color
 from .masks import do_mask
 from .normals import do_normal
 from .ui import do_ui, do_ui_batch
-from .utils import _u8
-
-if TYPE_CHECKING:
-    from .engine import Engine
+from .utils import Upscaler, _u8
 
 TIER_SCALE: dict[str, int] = {"4x": 4, "2x": 2, "native": 1}
 
@@ -93,7 +88,7 @@ ROLE_FN = {
 
 
 def process_top_batch(
-    engine: "Engine",
+    engine: Upscaler,
     role: str,
     family: str,
     rgbas: list[npt.NDArray[np.uint8]],
@@ -120,7 +115,7 @@ def process_top_batch(
 
 
 def process_top(
-    engine: "Engine",
+    engine: Upscaler,
     role: str,
     family: str,
     rgba: npt.NDArray[np.uint8],
@@ -145,7 +140,7 @@ def process_top(
 
 
 def process(
-    engine: "Engine",
+    engine: Upscaler,
     role: str,
     family: str,
     rgba: npt.NDArray[np.uint8],

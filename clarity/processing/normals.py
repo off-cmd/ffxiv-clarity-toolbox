@@ -1,18 +1,13 @@
 """Processing logic for tangent-space normal maps."""
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import numpy.typing as npt
 
-from .utils import _f, gray, has_alpha, nearest
-
-if TYPE_CHECKING:
-    from .engine import Engine
+from .utils import Upscaler, _f, gray, has_alpha, nearest
 
 
 def do_normal(
-    engine: "Engine",
+    engine: Upscaler,
     rgba: npt.NDArray[np.uint8],
     scale: int,
     src_fmt: str | None,

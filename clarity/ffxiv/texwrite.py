@@ -55,9 +55,7 @@ def write(rgba, attributes=ATTR_2D, mips=1):
             break
         hh, ww = cur.shape[0] // 2, cur.shape[1] // 2
         cur = (
-            (cur[: 2 * hh, : 2 * ww].reshape(hh, 2, ww, 2, 4).mean((1, 3)))
-            .round()
-            .astype(np.uint8)
+            (cur[: 2 * hh, : 2 * ww].reshape(hh, 2, ww, 2, 4).mean((1, 3))).round().astype(np.uint8)
         )
     body = b"".join(L[:, :, [2, 1, 0, 3]].tobytes() for L in levels)
     d = bytearray(HDR)
@@ -88,16 +86,15 @@ def mip_chain(rgba, mips):
             break
         hh, ww = max(1, cur.shape[0] // 2), max(1, cur.shape[1] // 2)
         cur = (
-            (cur[: 2 * hh, : 2 * ww].reshape(hh, 2, ww, 2, 4).mean((1, 3)))
-            .round()
-            .astype(np.uint8)
+            (cur[: 2 * hh, : 2 * ww].reshape(hh, 2, ww, 2, 4).mean((1, 3))).round().astype(np.uint8)
         )
     return levels
 
 
 def write_blocks(fmt, levels_blocks, w, h, attributes=ATTR_2D):
     """A block-compressed .tex: `levels_blocks` are the encoded bytes of each mip, largest
-    first, each ceil(w/4)*ceil(h/4)*block_bytes long for its own dimensions."""
+    first, each ceil(w/4)*ceil(h/4)*block_bytes long for its own dimensions.
+    """
     d = bytearray(HDR)
     struct.pack_into("<IIHHHBB", d, 0, attributes, fmt, w, h, 1, len(levels_blocks), 1)
     struct.pack_into("<3I", d, 16, HDR, HDR, HDR)
@@ -122,7 +119,8 @@ def write_blocks(fmt, levels_blocks, w, h, attributes=ATTR_2D):
 
 def write_bc7(rgba, mips=None, attributes=ATTR_2D, modes=(6, 5)):
     """RGBA (h, w, 4) -> BC7 .tex with a full mip chain (tools/bc7enc). `modes=(6,)` is about
-    twice as fast and only loses a little on blocks whose alpha varies sharply."""
+    twice as fast and only loses a little on blocks whose alpha varies sharply.
+    """
     from . import bc7enc
 
     a = np.asarray(rgba, np.uint8)
@@ -130,6 +128,4 @@ def write_bc7(rgba, mips=None, attributes=ATTR_2D, modes=(6, 5)):
     if mips is None:
         mips = int(np.floor(np.log2(max(w, h)))) + 1
     levels = mip_chain(a, mips)
-    return write_blocks(
-        BC7, [bc7enc.encode(L, modes=modes) for L in levels], w, h, attributes
-    )
+    return write_blocks(BC7, [bc7enc.encode(L, modes=modes) for L in levels], w, h, attributes)

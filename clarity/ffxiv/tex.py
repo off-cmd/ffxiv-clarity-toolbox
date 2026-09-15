@@ -1,7 +1,6 @@
 """FFXIV .tex header parser. Spec: file-formats/imhex/tex.hexpat (verified 7.55+)."""
 
 import struct
-from typing import Any, BinaryIO, Dict
 
 FORMATS = {
     0x1130: "L8",
@@ -46,18 +45,18 @@ ATTR = [
 
 class TexHeader:
     __slots__ = (
+        "array_size",
         "attributes",
+        "bpp",
+        "depth",
         "format",
         "format_name",
-        "width",
         "height",
-        "depth",
-        "mip_count",
-        "array_size",
-        "lod_offsets",
-        "surface_offsets",
-        "bpp",
         "kind",
+        "lod_offsets",
+        "mip_count",
+        "surface_offsets",
+        "width",
     )
 
     def __init__(self, data: bytes):

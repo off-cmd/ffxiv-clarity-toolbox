@@ -8,6 +8,7 @@ is fine; mod names, folder names and sort-order paths are not.
 """
 
 import json
+import pathlib
 
 from clarity.packaging import penumbra
 
@@ -23,7 +24,7 @@ def test_sort_order_folder_is_ascii() -> None:
 
 def test_merge_penumbra_writes_ascii_paths(tmp_path) -> None:
     path = penumbra.merge_penumbra(str(tmp_path), list(penumbra.MODS))
-    so = json.loads(open(path, encoding="utf-8").read())
+    so = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
     for mod, folder in so["Data"].items():
         assert mod.isascii() and folder.isascii(), (mod, folder)
 
@@ -32,7 +33,7 @@ def test_merge_icon_twins_writes_ascii_paths(tmp_path) -> None:
     # Regression: this format string carried an em dash in the same file whose header
     # documents that an em dash in a Penumbra path made every character invisible.
     path = penumbra.merge_icon_twins(str(tmp_path), {"Some Icons": "Some Icons (upscaled)"})
-    so = json.loads(open(path, encoding="utf-8").read())
+    so = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
     folder = so["Data"]["Some Icons (upscaled)"]
     assert folder.isascii(), folder
     assert folder.startswith("9 Interface/Icons - upscaled (G6)/940 ")

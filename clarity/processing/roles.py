@@ -1,6 +1,6 @@
 """Top-level dispatch for role-based texture processing."""
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
@@ -10,15 +10,15 @@ from .color import do_color
 from .masks import do_mask
 from .normals import do_normal
 from .ui import do_ui, do_ui_batch
-from .utils import _f, _u8
+from .utils import _u8
 
 if TYPE_CHECKING:
     from .engine import Engine
 
-TIER_SCALE: Dict[str, int] = {"4x": 4, "2x": 2, "native": 1}
+TIER_SCALE: dict[str, int] = {"4x": 4, "2x": 2, "native": 1}
 
 # family -> (top tier, max source edge that still gets the top tier)
-POLICY: Dict[str, Tuple[Optional[str], int]] = {
+POLICY: dict[str, tuple[str | None, int]] = {
     "equipment": ("4x", 1024),
     "accessory": ("4x", 1024),
     "weapon": ("4x", 1024),
@@ -43,9 +43,7 @@ POLICY: Dict[str, Tuple[Optional[str], int]] = {
 MAX_EDGE_OUT: int = 4096
 
 
-def top_tier(
-    family: str, w: int, h: int, override: Optional[str] = None
-) -> Optional[str]:
+def top_tier(family: str, w: int, h: int, override: str | None = None) -> str | None:
     """Calculate the maximum upscaling tier for a given texture family and dimensions.
 
     Args:
@@ -68,7 +66,7 @@ def top_tier(
     return {4: "4x", 2: "2x", 1: "native"}[s]
 
 
-def tiers_below(top: str) -> List[str]:
+def tiers_below(top: str) -> list[str]:
     """Return all downsampled mip tiers below a given top tier.
 
     Args:
@@ -94,9 +92,9 @@ def process_top_batch(
     engine: "Engine",
     role: str,
     family: str,
-    rgbas: List[npt.NDArray[np.uint8]],
+    rgbas: list[npt.NDArray[np.uint8]],
     top: str,
-) -> List[npt.NDArray[np.uint8]]:
+) -> list[npt.NDArray[np.uint8]]:
     """Process a batch of same-sized images at the top tier.
 
     Only the UI roles have a dedicated batched path; others fall back to one-at-a-time processing.
@@ -122,7 +120,7 @@ def process_top(
     role: str,
     family: str,
     rgba: npt.NDArray[np.uint8],
-    src_fmt: Optional[str],
+    src_fmt: str | None,
     top: str,
 ) -> npt.NDArray[np.uint8]:
     """Process a single image at its top tier.
@@ -147,9 +145,9 @@ def process(
     role: str,
     family: str,
     rgba: npt.NDArray[np.uint8],
-    src_fmt: Optional[str],
+    src_fmt: str | None,
     top: str,
-) -> Dict[str, npt.NDArray[np.uint8]]:
+) -> dict[str, npt.NDArray[np.uint8]]:
     """Process an image at all tiers down to native (legacy path).
 
     Args:
@@ -163,9 +161,7 @@ def process(
     Returns:
         A dictionary mapping tier names to the processed image arrays.
     """
-    out = (
-        process_top(engine, role, family, rgba, src_fmt, top).astype(np.float32) / 255.0
-    )
+    out = process_top(engine, role, family, rgba, src_fmt, top).astype(np.float32) / 255.0
     result = {top: _u8(out)}
     cur = out
     for tier in tiers_below(top)[1:]:

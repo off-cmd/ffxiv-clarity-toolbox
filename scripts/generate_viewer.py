@@ -12,11 +12,7 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
     output_html = os.path.join(results_dir, "viewer.html")
 
     categories = sorted(
-        [
-            d
-            for d in os.listdir(results_dir)
-            if os.path.isdir(os.path.join(results_dir, d))
-        ]
+        [d for d in os.listdir(results_dir) if os.path.isdir(os.path.join(results_dir, d))]
     )
 
     html = [
@@ -45,11 +41,11 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
         .vote-btn { background: #4caf50; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; margin-top: 10px; width: 100%; font-weight: bold; }
         .vote-btn:hover { background: #45a049; }
         .card.selected .vote-btn { background: #2e7d32; content: "Selected"; }
-        
+
         /* Floating Action Button */
         #fab { position: fixed; bottom: 20px; right: 20px; background: #61dafb; color: #000; border: none; padding: 15px 25px; border-radius: 30px; font-size: 1.1em; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 900; }
         #fab:hover { background: #4fa8c7; }
-        
+
         /* Modal for full images */
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center; }
         #modal img { max-width: 95%; max-height: 95%; object-fit: contain; }
@@ -60,9 +56,9 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
 <body>
     <h1>Clarity Model Benchmark Viewer</h1>
     <p>Compare the 1:1 center crops across different models and combinations. Click any image to view the full resolution version. <b>Click 'Vote for this' to select the best output for each texture.</b></p>
-    
+
     <button id="fab" onclick="exportVotes()">💾 Save Votes (clarity_votes.json)</button>
-    
+
     <div class="tabs" id="view-tabs">
         <button class="tab-btn active" onclick="setView('crops')">View 1:1 Crops</button>
         <button class="tab-btn" onclick="setView('full')">View Full Images</button>
@@ -73,11 +69,7 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
     for category in categories:
         cat_path = os.path.join(results_dir, category)
         specimens = sorted(
-            [
-                d
-                for d in os.listdir(cat_path)
-                if os.path.isdir(os.path.join(cat_path, d))
-            ]
+            [d for d in os.listdir(cat_path) if os.path.isdir(os.path.join(cat_path, d))]
         )
         if not specimens:
             continue
@@ -90,11 +82,11 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
             meta_path = os.path.join(spec_path, "metadata.json")
             meta_info = ""
             if os.path.exists(meta_path):
-                with open(meta_path, "r") as f:
+                with open(meta_path) as f:
                     meta = json.load(f)
                     meta_info = f"Format: {meta.get('format')} | Native Resolution: {meta.get('resolution')} | Game Path: {meta.get('path')}"
 
-            html.append(f'<div class="specimen">')
+            html.append('<div class="specimen">')
             html.append(f'<div class="specimen-title">{spec}</div>')
             html.append(f'<div class="meta">{meta_info}</div>')
             html.append('<div class="grid">')
@@ -124,13 +116,9 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
                         ]
                     ):
                         continue
-                else:
-                    # For BC7, keep Vanilla, RPLKSRd, and UpscalerV4
-                    if not any(
-                        x in basename
-                        for x in ["1_vanilla", "2_RPLKSRd_V3", "3_UpscalerV4"]
-                    ):
-                        continue
+                # For BC7, keep Vanilla, RPLKSRd, and UpscalerV4
+                elif not any(x in basename for x in ["1_vanilla", "2_RPLKSRd_V3", "3_UpscalerV4"]):
+                    continue
 
                 full_name = basename.replace("_crop.png", ".png")
 
@@ -170,12 +158,12 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
     <script>
         let currentView = 'crops';
         let votes = {};
-        
+
         function setView(view) {
             currentView = view;
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
-            
+
             const imgs = document.querySelectorAll('.compare-img');
             imgs.forEach(img => {
                 if (view === 'crops') {
@@ -185,34 +173,34 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
                 }
             });
         }
-        
+
         function vote(category, spec, title, btnElement) {
             if (!votes[category]) {
                 votes[category] = {};
             }
             votes[category][spec] = title;
-            
+
             // Remove selected class from all cards in this grid
             const grid = btnElement.closest('.grid');
             grid.querySelectorAll('.card').forEach(card => {
                 card.classList.remove('selected');
                 card.querySelector('.vote-btn').innerText = 'Vote for this';
             });
-            
+
             // Add selected class to chosen card
             const card = btnElement.closest('.card');
             card.classList.add('selected');
             btnElement.innerText = '★ Selected';
-            
+
             console.log("Voted:", votes);
         }
-        
+
         function exportVotes() {
             if (Object.keys(votes).length === 0) {
                 alert("You haven't cast any votes yet!");
                 return;
             }
-            
+
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(votes, null, 2));
             const downloadAnchorNode = document.createElement('a');
             downloadAnchorNode.setAttribute("href", dataStr);
@@ -221,21 +209,21 @@ def generate_viewer(results_dir=DEFAULT_RESULTS):
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
         }
-        
+
         function openModal(imgElement) {
             const modal = document.getElementById('modal');
             const modalImg = document.getElementById('modal-img');
             const caption = document.getElementById('modal-caption');
-            
+
             modal.style.display = 'flex';
             modalImg.src = imgElement.getAttribute('data-full');
             caption.innerText = imgElement.alt;
         }
-        
+
         function closeModal() {
             document.getElementById('modal').style.display = 'none';
         }
-        
+
         document.addEventListener('keydown', function(event) {
             if (event.key === "Escape") {
                 closeModal();

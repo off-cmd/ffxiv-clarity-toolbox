@@ -21,7 +21,6 @@ Classification (KB 07 §5, KB 08):
     skip      flow maps, arrays, cubes, depth, float formats, vfx
 """
 
-import os
 import re
 import sqlite3
 import time
@@ -147,17 +146,13 @@ def classify(path, hdr):
         kind = seg[3] if len(seg) > 3 else ""
         if kind in BG_HOUSING_KINDS:
             family = "bg-" + kind
-            part = (
-                seg[4] if len(seg) > 4 else ""
-            )  # dyna / indoor / the ward's own sub-kind
+            part = seg[4] if len(seg) > 4 else ""  # dyna / indoor / the ward's own sub-kind
         else:
             part = kind  # fld / dun / twn / btl / evt ...
     elif family == "bgcommon":
         seg = path.split("/")
         group = seg[1] if len(seg) > 1 else ""
-        part = (
-            seg[2] if len(seg) > 2 else ""
-        )  # indoor / outdoor / craft / dyna / cut ...
+        part = seg[2] if len(seg) > 2 else ""  # indoor / outdoor / craft / dyna / cut ...
         if group in BGCOMMON_GROUPS:
             family = "bgcommon-" + group
     name = path.rsplit("/", 1)[-1][:-4]
@@ -195,9 +190,7 @@ def classify(path, hdr):
     if hdr is not None:
         if hdr.texture_type != "2D" or hdr.format_name in SKIP_FORMATS or hdr.depth > 1:
             role = "skip"
-        if (
-            role == "icon" and hdr.width > 512
-        ):  # ui/icon also holds big art (maps, loading)
+        if role == "icon" and hdr.width > 512:  # ui/icon also holds big art (maps, loading)
             role = "ui"
     return family, part, role
 
@@ -212,14 +205,12 @@ class StoredHeader:
     original scan reached.
     """
 
-    __slots__ = ("width", "height", "format_name", "texture_type", "depth")
+    __slots__ = ("depth", "format_name", "height", "texture_type", "width")
 
     def __init__(self, w, h, fmt, ttype):
         self.width, self.height = w or 0, h or 0
         self.format_name, self.texture_type = fmt or "", ttype or "2D"
-        self.depth = (
-            1  # a depth > 1 row was already turned into role 'skip' at scan time
-        )
+        self.depth = 1  # a depth > 1 row was already turned into role 'skip' at scan time
 
 
 # The roles that have a function in roles.ROLE_FN. Kept here rather than in cli so that enumeration
@@ -251,15 +242,15 @@ def skip_reason(family, role, ttype=None):
     never be processed says so and says why.
     """
     if role not in PROCESSED_ROLES:
-        return _NO_PATH.get(role, "role %r has no processing function" % role)
+        return _NO_PATH.get(role, f"role {role!r} has no processing function")
     if ttype and ttype != "2D":
         # Belt and braces: classify() already turns these into role 'skip' when it has a header,
         # but a row inserted before that rule existed would not have been.
-        return "texture type %s: the role functions are 2D operations" % ttype
+        return f"texture type {ttype}: the role functions are 2D operations"
     from .processing import roles as _roles
 
     if _roles.POLICY.get(family, (None, 0))[0] is None:
-        return "family %r has no tier in roles.POLICY" % family
+        return f"family {family!r} has no tier in roles.POLICY"
     return None
 
 
@@ -280,9 +271,7 @@ def sync_skipped(man, dry_run=False):
             changes.append((r[:400], path))
             why[r.split(":")[0]] += 1
     if changes and not dry_run:
-        man.db.executemany(
-            "UPDATE tex SET status='skipped', note=? WHERE path=?", changes
-        )
+        man.db.executemany("UPDATE tex SET status='skipped', note=? WHERE path=?", changes)
         man.db.commit()
     return len(changes), why
 
@@ -332,7 +321,7 @@ class Manifest:
         q = "SELECT COUNT(*) FROM tex"
         args = []
         if where:
-            q += " WHERE " + " AND ".join("%s=?" % k for k in where)
+            q += " WHERE " + " AND ".join(f"{k}=?" for k in where)
             args = list(where.values())
         return self.db.execute(q, args).fetchone()[0]
 
@@ -364,7 +353,8 @@ class Manifest:
     def set_status(self, path, status, tiers="", note="", srchash=None, srcver=""):
         """srchash=None leaves whatever hash the row already had; pass a hash when the row is being
         marked done so the stamp and the output are written in the same transaction and can never
-        disagree about which source the files on disk came from."""
+        disagree about which source the files on disk came from.
+        """
         if srchash is None:
             self.db.execute(
                 "UPDATE tex SET status=?, tiers=?, note=?, updated=? WHERE path=?",
@@ -377,9 +367,7 @@ class Manifest:
             )
 
     def set_hash(self, path, srchash, srcver):
-        self.db.execute(
-            "UPDATE tex SET srchash=?, srcver=? WHERE path=?", (srchash, srcver, path)
-        )
+        self.db.execute("UPDATE tex SET srchash=?, srcver=? WHERE path=?", (srchash, srcver, path))
 
     def snapshot(self, version, mode, n_hashed, n_changed, n_gone, n_new, note=""):
         self.db.execute(
@@ -411,8 +399,9 @@ def _header(gd, path):
 
 
 def _mtrl_textures(gd, mtrl_path):
-    """texture paths named by a material. kbtools' class is Mtrl (an earlier name here, MtrlFile,
-    raised AttributeError on every call, so the structure walk had never added a texture)."""
+    """Texture paths named by a material. kbtools' class is Mtrl (an earlier name here, MtrlFile,
+    raised AttributeError on every call, so the structure walk had never added a texture).
+    """
     try:
         m = kb.mtrlfile.Mtrl(gd.read(mtrl_path))
     except Exception:
@@ -470,7 +459,7 @@ AC_SLOTS = ["ear", "nek", "wrs", "rir", "ril"]
 
 
 def _variants(gd, imc_path):
-    """material ids used by any variant of an .imc (default 1 when the imc is absent)."""
+    """Material ids used by any variant of an .imc (default 1 when the imc is absent)."""
     if not gd.exists(imc_path):
         return {1}
     try:
@@ -499,10 +488,8 @@ def _add_paths(man, gd, paths, seen, stats):
         stats["added"] += 1
 
 
-def gen_sets(
-    man, gd, seen, stats, kind, ids, slots, model_fmt, imc_fmt, mat_dir_fmt, log
-):
-    """equipment / accessory style sets: per set id, per race model → materials × imc variants."""
+def gen_sets(man, gd, seen, stats, kind, ids, slots, model_fmt, imc_fmt, mat_dir_fmt, log):
+    """Equipment / accessory style sets: per set id, per race model → materials × imc variants."""
     t0 = time.time()
     found = 0
     for sid in ids:
@@ -585,11 +572,7 @@ def gen_chara(man, gd, log=print):
     for kind, letter, top in (("weapon", "w", 10000), ("monster", "m", 10000)):
         t0, found = time.time(), 0
         probe, scan = BODY_SCAN[kind]
-        mdl = "chara/%s/%s%%04d/obj/body/b%%04d/model/%s%%04db%%04d.mdl" % (
-            kind,
-            letter,
-            letter,
-        )
+        mdl = f"chara/{kind}/{letter}%04d/obj/body/b%04d/model/{letter}%04db%04d.mdl"
         for sid in range(1, top):
             if not any(gd.exists(mdl % (sid, b, sid, b)) for b in range(1, probe + 1)):
                 continue
@@ -600,8 +583,7 @@ def gen_chara(man, gd, log=print):
                 found += 1
                 vids = _variants(
                     gd,
-                    "chara/%s/%s%04d/obj/body/b%04d/b%04d.imc"
-                    % (kind, letter, sid, b, b),
+                    "chara/%s/%s%04d/obj/body/b%04d/b%04d.imc" % (kind, letter, sid, b, b),
                 )
                 texs = []
                 for name in _model_materials(gd, mp):

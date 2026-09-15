@@ -1,5 +1,4 @@
-"""
-Minimal, dependency-free SqPack reader for FFXIV (Win32, DX11).
+"""Minimal, dependency-free SqPack reader for FFXIV (Win32, DX11).
 
 Verified against retail client 2026.08.11 (patch 7.55+, Dawntrail).
 Format sources: xiv.dev docs/data-files/sqpack.md + Lumina (SqPackStream.cs,
@@ -9,13 +8,14 @@ Purpose: ground-truth inspection of game assets (.tex/.mtrl/.mdl/.shpk) without
 needing dotnet/TexTools. Read-only; never writes to the game install.
 """
 
+import contextlib
 import glob
 import hashlib
 import io
 import os
 import struct
 import zlib
-from typing import Any, BinaryIO, Dict, List, Optional
+from typing import Any
 
 CATEGORIES = {
     "common": 0x00,
@@ -107,13 +107,12 @@ class Repository:
         return self._idx[key]
 
     def dat(self, cat, exp, chunk, file_id):
-        return os.path.join(
-            self.dir, f"{cat:02x}{exp:02x}{chunk:02x}.win32.dat{file_id}"
-        )
+        return os.path.join(self.dir, f"{cat:02x}{exp:02x}{chunk:02x}.win32.dat{file_id}")
 
 
 class GameData:
     """Main entry point for SqPack file access."""
+
     def __init__(self, sqpack_dir: str) -> None:
         self.sqpack = sqpack_dir
         self.repos = {
@@ -126,7 +125,7 @@ class GameData:
         parsed = parse_path(path)
         if parsed is None:
             return None
-        cat, _exp, chunk = parsed
+        cat, _exp, _chunk = parsed
         # The repository is the explicit expansion segment when the path carries one
         # (bg/ex3/..., music/ex1/...), otherwise the base game.
         segs = path.lower().strip("/").split("/")
@@ -174,7 +173,7 @@ FT_EMPTY, FT_STANDARD, FT_MODEL, FT_TEXTURE = 1, 2, 3, 4
 
 def _block(f, offset, out):
     f.seek(offset)
-    size, _unk, btype, dsize = struct.unpack("<4I", f.read(16))
+    _size, _unk, btype, dsize = struct.unpack("<4I", f.read(16))
     if btype == 32000:  # uncompressed
         out.write(f.read(dsize))
     else:  # raw DEFLATE, no zlib wrapper
@@ -195,17 +194,15 @@ _DAT_HANDLES = {}
 def _dat(path):
     f = _DAT_HANDLES.get(path)
     if f is None or f.closed:
-        f = open(path, "rb")
+        f = open(path, "rb")  # noqa: SIM115 - cached; closed by close_dats()
         _DAT_HANDLES[path] = f
     return f
 
 
 def close_dats():
     for f in _DAT_HANDLES.values():
-        try:
+        with contextlib.suppress(Exception):
             f.close()
-        except Exception:
-            pass
     _DAT_HANDLES.clear()
 
 
@@ -219,17 +216,13 @@ def read_file(dat_path, offset):
     if ftype == FT_STANDARD:
         nblocks = struct.unpack_from("<I", head, 0x14)[0]
         for i in range(nblocks):
-            boff, csz, usz = struct.unpack_from("<IHH", head, 0x18 + i * 8)
+            boff, _csz, _usz = struct.unpack_from("<IHH", head, 0x18 + i * 8)
             _block(f, offset + hsize + boff, out)
     elif ftype == FT_TEXTURE:
         nblocks = struct.unpack_from("<I", head, 0x14)[0]
-        lods = [
-            struct.unpack_from("<5I", head, 0x18 + i * 20) for i in range(nblocks)
-        ]
+        lods = [struct.unpack_from("<5I", head, 0x18 + i * 20) for i in range(nblocks)]
         # sub-block compressed sizes follow the LodBlock array
-        sub = struct.unpack_from(
-            f"<{sum(l[4] for l in lods)}H", head, 0x18 + nblocks * 20
-        )
+        sub = struct.unpack_from(f"<{sum(lod[4] for lod in lods)}H", head, 0x18 + nblocks * 20)
         mip_hdr = lods[0][0]
         if mip_hdr:  # raw .tex header sits before block 0
             f.seek(offset + hsize)
@@ -249,13 +242,13 @@ def read_file(dat_path, offset):
 
 
 def _read_model(f, offset, head, raw_size):
-    (size, ftype, rawsz, nblocks, used, version, stack_size, runtime_size) = (
+    (_size, _ftype, _rawsz, _nblocks, _used, version, stack_size, runtime_size) = (
         struct.unpack_from("<8I", head, 0)
     )
     vbuf = struct.unpack_from("<3I", head, 0x20)
     egeo = struct.unpack_from("<3I", head, 0x2C)
     ibuf = struct.unpack_from("<3I", head, 0x38)
-    c_stack, c_runtime = struct.unpack_from("<2I", head, 0x44)
+    _c_stack, _c_runtime = struct.unpack_from("<2I", head, 0x44)
     off = 0x70
     stack_off, runtime_off = struct.unpack_from("<2I", head, off)
     off += 8
@@ -363,17 +356,17 @@ def _rebuild_model(
     _section(f, base, runtime[0], runtime[1], runtime[2], csizes, body)
     _runtime_size = body.tell() - _stack_size
     v_off, i_off, v_size, i_size = [0] * 3, [0] * 3, [0] * 3, [0] * 3
-    HDR = 0x44
+    hdr_size = 0x44
     for lod in range(3):
         if vb_n[lod]:
-            v_off[lod] = HDR + body.tell()
+            v_off[lod] = hdr_size + body.tell()
             before = body.tell()
             _section(f, base, vb_off[lod], vb_i[lod], vb_n[lod], csizes, body)
             v_size[lod] = body.tell() - before
         if eg_n[lod]:
             _section(f, base, eg_off[lod], eg_i[lod], eg_n[lod], csizes, body)
         if ib_n[lod]:
-            i_off[lod] = HDR + body.tell()
+            i_off[lod] = hdr_size + body.tell()
             before = body.tell()
             _section(f, base, ib_off[lod], ib_i[lod], ib_n[lod], csizes, body)
             i_size[lod] = body.tell() - before
@@ -409,7 +402,7 @@ def _ok(p):
     return p and os.path.isdir(os.path.join(p, "ffxiv"))
 
 
-def find_game(root: Optional[str] = None) -> str:
+def find_game(root: str | None = None) -> str:
     """Locate the game's `sqpack` directory.
 
     Set **FFXIV_SQPACK** to skip the search entirely:
@@ -424,9 +417,7 @@ def find_game(root: Optional[str] = None) -> str:
         p = env if _ok(env) else os.path.join(env, "game", "sqpack")
         if _ok(p):
             return p
-        raise FileNotFoundError(
-            "FFXIV_SQPACK is set but has no 'ffxiv' folder: %s" % env
-        )
+        raise FileNotFoundError(f"FFXIV_SQPACK is set but has no 'ffxiv' folder: {env}")
 
     if _ok(root):
         return root
@@ -435,7 +426,7 @@ def find_game(root: Optional[str] = None) -> str:
         bases = []
         for d in "CDEFGHIJKL":
             for pf in ("Program Files (x86)", "Program Files", "Games", ""):
-                bases.append(os.path.join("%s:\\" % d, pf) if pf else "%s:\\" % d)
+                bases.append(os.path.join(f"{d}:\\", pf) if pf else f"{d}:\\")
         for b in bases:
             for suf in _INSTALL_SUFFIXES:
                 p = os.path.join(b, suf)
@@ -473,7 +464,7 @@ def game_version(sqpack_dir=None):
         os.path.join(d, "ffxivgame.ver"),
     ):
         try:
-            with open(cand, "r", encoding="utf-8", errors="ignore") as f:
+            with open(cand, encoding="utf-8", errors="ignore") as f:
                 v = f.read().strip()
             if v:
                 return v
@@ -505,7 +496,7 @@ def entry_fingerprint(dat_path, offset, digest_size=16):
     """
     f = _dat(dat_path)
     f.seek(offset)
-    hsize, ftype, raw_size = struct.unpack("<3I", f.read(12))
+    hsize, ftype, _raw_size = struct.unpack("<3I", f.read(12))
     f.seek(offset)
     head = f.read(hsize)
     h = hashlib.blake2b(digest_size=digest_size)
@@ -513,9 +504,7 @@ def entry_fingerprint(dat_path, offset, digest_size=16):
     if ftype == FT_TEXTURE:
         nblocks = struct.unpack_from("<I", head, 0x14)[0]
         lods = [struct.unpack_from("<5I", head, 0x18 + i * 20) for i in range(nblocks)]
-        sub = struct.unpack_from(
-            "<%dH" % sum(l[4] for l in lods), head, 0x18 + nblocks * 20
-        )
+        sub = struct.unpack_from("<%dH" % sum(lod[4] for lod in lods), head, 0x18 + nblocks * 20)
         mip_hdr = lods[0][0] if lods else 0
         if mip_hdr:  # the raw .tex header, stored uncompressed before block 0
             f.seek(offset + hsize)
@@ -547,7 +536,8 @@ def entry_fingerprint(dat_path, offset, digest_size=16):
 
 def read_tex_header(dat_path, offset, nbytes=80):
     """Fast path: a texture-type dat entry stores the raw .tex header uncompressed
-    immediately after the entry header, so we can read it without inflating mips."""
+    immediately after the entry header, so we can read it without inflating mips.
+    """
     f = _dat(dat_path)
     f.seek(offset)
     hsize, ftype, _raw_size = struct.unpack("<3I", f.read(12))

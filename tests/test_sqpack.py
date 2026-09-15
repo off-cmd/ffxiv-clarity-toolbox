@@ -24,7 +24,9 @@ def test_split_hash_lowercases_and_splits_at_the_last_slash() -> None:
 
 
 def test_full_hash_is_over_the_whole_lowercased_path() -> None:
-    assert sqpack.full_hash("UI/Icon/000000/000001.tex") == sqpack.crc32(b"ui/icon/000000/000001.tex")
+    assert sqpack.full_hash("UI/Icon/000000/000001.tex") == sqpack.crc32(
+        b"ui/icon/000000/000001.tex"
+    )
 
 
 @pytest.mark.parametrize(

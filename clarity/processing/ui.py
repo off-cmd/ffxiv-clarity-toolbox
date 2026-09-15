@@ -1,11 +1,11 @@
 """Processing logic for UI elements (icons, ULD sheets)."""
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
 
-from .utils import _f, _u8, gray, has_alpha
+from .utils import _f, gray, has_alpha
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -15,7 +15,7 @@ def do_ui(
     engine: "Engine",
     rgba: npt.NDArray[np.uint8],
     scale: int,
-    src_fmt: Optional[str],
+    src_fmt: str | None,
     family: str,
 ) -> npt.NDArray[np.float32]:
     """Upscale UI textures using alpha-premultiplication to avoid dark fringing.
@@ -34,15 +34,11 @@ def do_ui(
     a = x[..., 3:4]
     if not has_alpha(rgba):
         rgb = engine.run("ui", x[..., :3], scale) if scale > 1 else x[..., :3]
-        return np.dstack([np.clip(rgb, 0, 1), np.ones_like(rgb[..., :1])]).astype(
-            np.float32
-        )
+        return np.dstack([np.clip(rgb, 0, 1), np.ones_like(rgb[..., :1])]).astype(np.float32)
     pre = x[..., :3] * a
     if scale > 1:
         pre_up = engine.run("ui", pre, scale)
-        straight_up = engine.run(
-            "ui", x[..., :3], scale
-        )  # colour the artist left under alpha 0
+        straight_up = engine.run("ui", x[..., :3], scale)  # colour the artist left under alpha 0
         a_up = gray(engine, a[..., 0], scale, slot="ui")[..., None]
     else:
         pre_up, straight_up, a_up = pre, x[..., :3], a
@@ -53,8 +49,8 @@ def do_ui(
 
 
 def do_ui_batch(
-    engine: "Engine", rgbas: List[npt.NDArray[np.uint8]], scale: int
-) -> List[npt.NDArray[np.float32]]:
+    engine: "Engine", rgbas: list[npt.NDArray[np.uint8]], scale: int
+) -> list[npt.NDArray[np.float32]]:
     """Upscale a batch of UI textures simultaneously.
 
     This dramatically speeds up processing for many small UI icons by stacking

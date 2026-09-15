@@ -31,7 +31,7 @@ def _blocks(rgba):
     H, Wd = (h + 3) // 4 * 4, (w + 3) // 4 * 4
     a = np.zeros((H, Wd, 4), np.uint8)
     a[:h, :w] = rgba
-    if H > h:
+    if h < H:
         a[h:] = a[h - 1 : h]
     if Wd > w:
         a[:, w:] = a[:, w - 1 : w]
@@ -48,9 +48,7 @@ def _fit_line(X):
     for _ in range(12):
         d = np.einsum("bcd,bd->bc", C, d)
         n = np.linalg.norm(d, axis=1, keepdims=True)
-        d = np.where(
-            n > 1e-12, d / np.maximum(n, 1e-12), np.ones_like(d) / np.sqrt(X.shape[2])
-        )
+        d = np.where(n > 1e-12, d / np.maximum(n, 1e-12), np.ones_like(d) / np.sqrt(X.shape[2]))
     return mu[:, 0], d
 
 
@@ -208,8 +206,9 @@ def _mode5(X):
 # ------------------------------------------------------------------ public
 def encode(rgba, modes=(6, 5), chunk=16384):
     """(h, w, 4) uint8 RGBA -> BC7 block bytes (row-major blocks). Chunked: the assignment
-    step is (blocks, 16, 16, 4) doubles, 4 MB per thousand blocks."""
-    X, bh, bw = _blocks(np.asarray(rgba, np.uint8))
+    step is (blocks, 16, 16, 4) doubles, 4 MB per thousand blocks.
+    """
+    X, _bh, _bw = _blocks(np.asarray(rgba, np.uint8))
     out = np.empty((X.shape[0], 2), "<u8")
     for s in range(0, X.shape[0], chunk):
         Xc = X[s : s + chunk]
@@ -238,9 +237,7 @@ def roundtrip(rgba, blocks=None):
     h, w = rgba.shape[:2]
     if blocks is None:
         blocks = encode(rgba)
-    dec = np.frombuffer(td.decode_bc7(blocks, w, h), np.uint8).reshape(h, w, 4)[
-        ..., [2, 1, 0, 3]
-    ]
+    dec = np.frombuffer(td.decode_bc7(blocks, w, h), np.uint8).reshape(h, w, 4)[..., [2, 1, 0, 3]]
     err = np.abs(dec.astype(float) - rgba.astype(float))
     mse = (err**2).mean((0, 1))
     return 10 * np.log10(255**2 / np.maximum(mse, 1e-9)), err.mean((0, 1))

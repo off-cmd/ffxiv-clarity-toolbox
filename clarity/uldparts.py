@@ -65,7 +65,7 @@ def _uldfile():
         return _MOD[0]
     mod = None
     try:
-        import uldfile as mod  # noqa: F401  (already on sys.path?)
+        import uldfile as mod
     except ImportError:
         import os
         import sys
@@ -79,7 +79,7 @@ def _uldfile():
             if cand not in sys.path:
                 sys.path.append(cand)
             try:
-                import uldfile as mod  # noqa: F811
+                import uldfile as mod
             except ImportError:
                 mod = None
     _MOD.append(mod)
@@ -91,7 +91,7 @@ def uld_for(tex_path):
     base = tex_path.rsplit("/", 1)[-1]
     stem_hr = base[:-4] if base.lower().endswith(".tex") else base
     stem = HR1.sub("", stem_hr)
-    return "ui/uld/%s.uld" % stem, stem, (2 if stem != stem_hr else 1)
+    return f"ui/uld/{stem}.uld", stem, (2 if stem != stem_hr else 1)
 
 
 def ulds_in_pathlist(file):
@@ -134,7 +134,7 @@ def build_index(gd, stems, log=None, pathlist=None):
     if mod is None:
         return idx
     loaded = 0
-    cands = {"ui/uld/%s.uld" % HR1.sub("", s.lower()) for s in stems}
+    cands = {"ui/uld/{}.uld".format(HR1.sub("", s.lower())) for s in stems}
     cands.update(ulds_in_pathlist(pathlist))
     for path in sorted(cands):
         try:
@@ -152,9 +152,7 @@ def build_index(gd, stems, log=None, pathlist=None):
                     continue
                 idx.setdefault(name[:-4], []).append((x, y, w, h))
     if log:
-        log(
-            "uld index: %d .uld loaded, rectangles for %d sheet(s)" % (loaded, len(idx))
-        )
+        log("uld index: %d .uld loaded, rectangles for %d sheet(s)" % (loaded, len(idx)))
     return idx
 
 
@@ -263,11 +261,7 @@ def upscale_by_parts(run_batch, rgba, scale, rects, whole=None, pad=PAD):
     -> uint8 (H*scale, W*scale, 4)
     """
     H, W = rgba.shape[:2]
-    out = (
-        whole.copy()
-        if whole is not None
-        else np.zeros((H * scale, W * scale, 4), np.uint8)
-    )
+    out = whole.copy() if whole is not None else np.zeros((H * scale, W * scale, 4), np.uint8)
     if scale <= 1 or not rects:
         return out
     s = scale

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from spandrel import ModelLoader
 
 from clarity import paths
-from clarity.ffxiv import sqpack, tex
+from clarity.ffxiv import sqpack
 
 BENCHMARK_DIR = os.path.join(paths.TOOL_ROOT, "benchmarks", "color")
 CORPUS_FILE = os.path.join(BENCHMARK_DIR, "corpus.json")
@@ -85,7 +85,7 @@ def main():
         print(f"Error: Corpus not found at {CORPUS_FILE}")
         return
 
-    with open(CORPUS_FILE, "r") as f:
+    with open(CORPUS_FILE) as f:
         corpus = json.load(f)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -117,9 +117,7 @@ def main():
         .to(device)
     )
     bc1_cleaner = (
-        loader.load_from_file(os.path.join(models_dir, "1x_BC1-smooth2.pth"))
-        .eval()
-        .to(device)
+        loader.load_from_file(os.path.join(models_dir, "1x_BC1-smooth2.pth")).eval().to(device)
     )
 
     from clarity.processing import engine
@@ -146,17 +144,13 @@ def main():
 
             # Direct upscales
             outputs["2_RPLKSRd_V3"] = tensor_to_pil(run_model(rplksrd, tensor_rgb, eng))
-            outputs["3_UpscalerV4"] = tensor_to_pil(
-                run_model(upscalerv4, tensor_rgb, eng)
-            )
+            outputs["3_UpscalerV4"] = tensor_to_pil(run_model(upscalerv4, tensor_rgb, eng))
 
             # BC1 cleaning combinations (ONLY for BC1 sources)
             if fmt == "BC1":
                 cleaned = run_model(bc1_cleaner, tensor_rgb, eng)
                 outputs["4_BC1smooth2_only"] = tensor_to_pil(cleaned)
-                outputs["5_BC1smooth2_RPLKSRd"] = tensor_to_pil(
-                    run_model(rplksrd, cleaned, eng)
-                )
+                outputs["5_BC1smooth2_RPLKSRd"] = tensor_to_pil(run_model(rplksrd, cleaned, eng))
                 outputs["6_BC1smooth2_UpscalerV4"] = tensor_to_pil(
                     run_model(upscalerv4, cleaned, eng)
                 )

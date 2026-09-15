@@ -16,13 +16,13 @@ lookup rather than after, so it is recorded here rather than papered over.
 """
 
 import hashlib
-import json
 import os
+import pathlib
 import shutil
 
-from . import ffxiv as kb
 from . import manifest as mf
 from . import texio
+from .jsonio import read_json, write_json
 from .processing import roles
 
 
@@ -55,7 +55,7 @@ def mod_files(mod_dir, log=None):
         if not name.endswith(".json") or name == "meta.json":
             continue
         try:
-            j = json.load(open(os.path.join(mod_dir, name), encoding="utf-8-sig"))
+            j = read_json(os.path.join(mod_dir, name))
         except Exception:
             continue
         blocks = [j] if "Files" in j else []
@@ -66,7 +66,7 @@ def mod_files(mod_dir, log=None):
                 rel = rel.replace("\\", "/")
                 if not contained(mod_dir, rel):
                     if log:
-                        log("  REFUSED (escapes the mod folder) %s -> %s" % (name, rel))
+                        log(f"  REFUSED (escapes the mod folder) {name} -> {rel}")
                     continue
                 out[rel] = gp.lower()
     return out
@@ -107,32 +107,30 @@ def upscale_mod(
         shutil.copy2(src, d)
     meta_p = os.path.join(dst, "meta.json")
     if os.path.isfile(meta_p):
-        meta = json.load(open(meta_p, encoding="utf-8-sig"))
+        meta = read_json(meta_p)
         meta["Name"] = meta.get("Name", name) + suffix
         meta["Description"] = (
             "Upscaled twin built by clarity-upscale (icons %d×, sheets %d×). "
             % (icon_scale, sheet_scale)
         ) + meta.get("Description", "")
-        json.dump(
-            meta, open(meta_p, "w", encoding="utf-8"), indent=2, ensure_ascii=False
-        )
+        write_json(meta_p, meta)
     cache, stats = {}, {"unique": 0, "dupes": 0, "skipped": 0, "written": 0}
     for rel, gp in sorted(files.items()):
         src = os.path.join(mod_dir, rel)
         if not os.path.isfile(src) or not rel.lower().endswith(".tex"):
             continue
-        raw = open(src, "rb").read()
+        raw = pathlib.Path(src).read_bytes()
         key = hashlib.sha256(raw).hexdigest()
         d = os.path.join(dst, rel)
         os.makedirs(os.path.dirname(d), exist_ok=True)
         if key in cache:
             stats["dupes"] += 1
-            open(d, "wb").write(cache[key]) if cache[key] else shutil.copy2(src, d)
+            pathlib.Path(d).write_bytes(cache[key]) if cache[key] else shutil.copy2(src, d)
             continue
         stats["unique"] += 1
         try:
             hdr, rgba = texio.read(raw)
-            fam, part, role = mf.classify(gp, hdr)
+            fam, _part, role = mf.classify(gp, hdr)
             if role in ("skip", "id", "other"):
                 cache[key] = None
                 stats["skipped"] += 1
@@ -143,11 +141,9 @@ def upscale_mod(
             result = roles.process(engine, role, fam, rgba, hdr.format_name, top)
             img = result[top]
             fmt_out = texio.out_format(hdr.format_name, role)
-            mips = (
-                texio.full_mips(img.shape[1], img.shape[0]) if hdr.mip_count > 1 else 1
-            )
+            mips = texio.full_mips(img.shape[1], img.shape[0]) if hdr.mip_count > 1 else 1
             enc = texio.encode(img, fmt_out, mips=mips, attributes=hdr.attributes)
-            open(d, "wb").write(enc)
+            pathlib.Path(d).write_bytes(enc)
             cache[key] = enc
             stats["written"] += 1
             log(
@@ -163,8 +159,8 @@ def upscale_mod(
                 )
             )
         except Exception as e:
-            log("  FAILED %s: %s" % (rel, e))
+            log(f"  FAILED {rel}: {e}")
             shutil.copy2(src, d)
             cache[key] = None
-    log("%s: %s" % (name, stats))
+    log(f"{name}: {stats}")
     return dst, stats

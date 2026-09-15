@@ -45,7 +45,7 @@ class Exd:
         off = self.offsets.get(rid)
         if off is None:
             return None
-        size, count = struct.unpack_from(">IH", self.data, off)
+        _size, _count = struct.unpack_from(">IH", self.data, off)
         base = off + 6
         strings = base + self.exh.data_offset
         out = []

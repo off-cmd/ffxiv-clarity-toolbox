@@ -138,13 +138,9 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(requested_tier("equipment", "mask", "gear_m.tex"), "2x")
         self.assertEqual(requested_tier("bg-hou", "normal", "wall_n.tex"), "native")
         self.assertEqual(requested_tier("human-face", "normal", "face_norm.tex"), "2x")
+        self.assertEqual(generation_tier("equipment", "color", "gear_d.tex", 2048, 2048), "native")
         self.assertEqual(
-            generation_tier("equipment", "color", "gear_d.tex", 2048, 2048), "native"
-        )
-        self.assertEqual(
-            generation_tier(
-                "equipment", "color", "gear_d.tex", 512, 512, profile="legacy"
-            ),
+            generation_tier("equipment", "color", "gear_d.tex", 512, 512, profile="legacy"),
             "4x",
         )
 
@@ -195,9 +191,7 @@ class ReleaseTests(unittest.TestCase):
             product.parent.mkdir(parents=True)
             product.write_bytes(b"processed texture")
             db = sqlite3.connect(root / "manifest.sqlite")
-            db.execute(
-                "CREATE TABLE tex(path,family,role,status,tiers,srchash,srcver,note)"
-            )
+            db.execute("CREATE TABLE tex(path,family,role,status,tiers,srchash,srcver,note)")
             db.execute(
                 "INSERT INTO tex VALUES(?,?,?,?,?,?,?,?)",
                 (
@@ -231,8 +225,7 @@ class ReleaseTests(unittest.TestCase):
             ):
                 release.export(args)
             folder = (
-                root
-                / "releases/2.50.0-preview.1/Clarity - World/General Environments - everyday"
+                root / "releases/2.50.0-preview.1/Clarity - World/General Environments - everyday"
             )
             meta_data = json.loads((folder / "meta.json").read_text())
             mappings = meta_data["DefaultData"]["Files"]

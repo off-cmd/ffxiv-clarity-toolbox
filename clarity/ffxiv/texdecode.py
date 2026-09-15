@@ -46,9 +46,7 @@ def _bc1_blocks(data, w, h, alpha=False, four_colour=False):
     for py in range(4):
         for px in range(4):
             sel = (bits >> (2 * (py * 4 + px))) & 3
-            idx = np.take_along_axis(pal, sel[..., None, None].repeat(3, -1), axis=2)[
-                :, :, 0, :
-            ]
+            idx = np.take_along_axis(pal, sel[..., None, None].repeat(3, -1), axis=2)[:, :, 0, :]
             av = np.take_along_axis(a, sel[..., None], axis=2)[:, :, 0]
             out[py::4, px::4, :3] = idx.astype(np.uint8)
             out[py::4, px::4, 3] = av.astype(np.uint8)
@@ -58,9 +56,7 @@ def _bc1_blocks(data, w, h, alpha=False, four_colour=False):
 def _bc_alpha_plane(data, w, h, stride, off):
     """BC4-style 8-byte alpha block decoder -> (h,w) uint8."""
     bw, bh = (w + 3) // 4, (h + 3) // 4
-    raw = np.frombuffer(data, dtype=np.uint8).reshape(bh, bw, stride)[
-        :, :, off : off + 8
-    ]
+    raw = np.frombuffer(data, dtype=np.uint8).reshape(bh, bw, stride)[:, :, off : off + 8]
     a0 = raw[..., 0].astype(np.float32)
     a1 = raw[..., 1].astype(np.float32)
     bits = np.zeros(raw.shape[:2], np.uint64)
@@ -80,12 +76,10 @@ def _bc_alpha_plane(data, w, h, stride, off):
     out = np.zeros((bh * 4, bw * 4), np.uint8)
     for py in range(4):
         for px in range(4):
-            sel = ((bits >> np.uint64(3 * (py * 4 + px))) & np.uint64(7)).astype(
-                np.int64
+            sel = ((bits >> np.uint64(3 * (py * 4 + px))) & np.uint64(7)).astype(np.int64)
+            out[py::4, px::4] = np.take_along_axis(pal, sel[..., None], axis=2)[:, :, 0].astype(
+                np.uint8
             )
-            out[py::4, px::4] = np.take_along_axis(pal, sel[..., None], axis=2)[
-                :, :, 0
-            ].astype(np.uint8)
     return out[:h, :w]
 
 
@@ -115,9 +109,8 @@ def decode_raw(f: str, data: bytes, w: int, ht: int) -> np.ndarray:
         # instead, naming the fix.
         if _t2d is None:
             raise RuntimeError(
-                "%s needs texture2ddecoder, which is not installed. Add `--with texture2ddecoder` "
+                f"{f} needs texture2ddecoder, which is not installed. Add `--with texture2ddecoder` "
                 "to the uv run, and pin --python 3.12: it ships no wheels for 3.13+."
-                % f
             )
         fn = {"BC7": _t2d.decode_bc7, "BC6H": _t2d.decode_bc6}[f]
         bgra = np.frombuffer(fn(data, w, ht), np.uint8).reshape(ht, w, 4)
@@ -126,9 +119,7 @@ def decode_raw(f: str, data: bytes, w: int, ht: int) -> np.ndarray:
         # 16-byte block: 8 bytes of raw 4-bit alpha, then a BC1 colour block
         # that is always in 4-colour mode (c0 > c1 is not consulted).
         if _t2d is not None and hasattr(_t2d, "decode_bc2"):
-            bgra = np.frombuffer(_t2d.decode_bc2(data, w, ht), np.uint8).reshape(
-                ht, w, 4
-            )
+            bgra = np.frombuffer(_t2d.decode_bc2(data, w, ht), np.uint8).reshape(ht, w, 4)
             return bgra[..., [2, 1, 0, 3]].copy()
         bw, bh = (w + 3) // 4, (ht + 3) // 4
         blocks = np.frombuffer(data[: bw * bh * 16], np.uint8).reshape(bh, bw, 16)
@@ -144,16 +135,12 @@ def decode_raw(f: str, data: bytes, w: int, ht: int) -> np.ndarray:
         return rgb
     if f == "BC1":
         if _t2d is not None:
-            bgra = np.frombuffer(_t2d.decode_bc1(data, w, ht), np.uint8).reshape(
-                ht, w, 4
-            )
+            bgra = np.frombuffer(_t2d.decode_bc1(data, w, ht), np.uint8).reshape(ht, w, 4)
             return bgra[..., [2, 1, 0, 3]].copy()
         return _bc1_blocks(data, w, ht)
     if f == "BC3":
         if _t2d is not None:
-            bgra = np.frombuffer(_t2d.decode_bc3(data, w, ht), np.uint8).reshape(
-                ht, w, 4
-            )
+            bgra = np.frombuffer(_t2d.decode_bc3(data, w, ht), np.uint8).reshape(ht, w, 4)
             return bgra[..., [2, 1, 0, 3]].copy()
         # A BC3 block is SIXTEEN bytes: 8 of BC4-style alpha, then 8 of BC1 colour. The colour half
         # therefore has to be extracted before it is handed to a decoder that walks 8-byte blocks
@@ -168,9 +155,7 @@ def decode_raw(f: str, data: bytes, w: int, ht: int) -> np.ndarray:
         return rgb
     if f == "BC5":
         if _t2d is not None:
-            bgra = np.frombuffer(_t2d.decode_bc5(data, w, ht), np.uint8).reshape(
-                ht, w, 4
-            )
+            bgra = np.frombuffer(_t2d.decode_bc5(data, w, ht), np.uint8).reshape(ht, w, 4)
             return bgra[..., [2, 1, 0, 3]].copy()
         r = _bc_alpha_plane(data, w, ht, 16, 0)
         g = _bc_alpha_plane(data, w, ht, 16, 8)
@@ -211,9 +196,9 @@ def decode_raw(f: str, data: bytes, w: int, ht: int) -> np.ndarray:
         out[..., 3] = np.where((v >> 15) & 1, 255, 0).astype(np.uint8)
         return out
     if f == "L8":
-        l = np.frombuffer(data, np.uint8).reshape(ht, w)
+        lum = np.frombuffer(data, np.uint8).reshape(ht, w)
         out = np.empty((ht, w, 4), np.uint8)
-        out[..., 0] = out[..., 1] = out[..., 2] = l
+        out[..., 0] = out[..., 1] = out[..., 2] = lum
         out[..., 3] = 255
         return out
     if f == "A8":

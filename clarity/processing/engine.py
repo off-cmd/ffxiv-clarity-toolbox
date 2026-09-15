@@ -14,14 +14,12 @@ models Kartoffels' ChaiNNer chains use (KB 08), all on openmodeldb.info:
     ui        4x_foolhardy_Remacri.pth      4×, UI sheets and icons (alpha handled outside the model)
 """
 
-import json
 import os
-from typing import Any, Dict, List, Optional
 
 import numpy as np
-import numpy.typing as npt
 
 from .. import paths
+from ..jsonio import read_json
 
 DEFAULT_REGISTRY = {
     "bc1clean": "1x_BC1-smooth2.pth",  # set to null in registry.json when the colour model removes BC artefacts itself
@@ -51,18 +49,16 @@ RECOMMENDED_REGISTRY = {
 class Engine:
     # tile defaults to 512 to match the CLI, so constructing an Engine directly behaves the
     # same as running the command. The two drifting apart is how a "default" stops meaning one.
-    def __init__(
-        self, models_dir, device=None, tile=512, pad=16, fp16=True, allow_fallback=True
-    ):
+    def __init__(self, models_dir, device=None, tile=512, pad=16, fp16=True, allow_fallback=True):
         self.models_dir = models_dir
         self.registry = dict(DEFAULT_REGISTRY)
         # registry.json beside the weights first, then the tracked one in scripts-local\clarity-upscale\models
         # (paths.REGISTRY) -- the tracked copy is the configuration of record and wins.
-        for reg in (
-            [os.path.join(models_dir, "registry.json")] if models_dir else []
-        ) + [paths.REGISTRY]:
+        for reg in ([os.path.join(models_dir, "registry.json")] if models_dir else []) + [
+            paths.REGISTRY
+        ]:
             if reg and os.path.isfile(reg):
-                self.registry.update(json.load(open(reg)))
+                self.registry.update(read_json(reg))
         self.tile, self.pad, self.fp16 = tile, pad, fp16
         self.allow_fallback = allow_fallback
         self._models = {}
@@ -101,9 +97,7 @@ class Engine:
 
     def describe(self):
         return ", ".join(
-            "%s=%s" % (s, os.path.basename(self.path(s)))
-            for s in self.registry
-            if self.has(s)
+            f"{s}={os.path.basename(self.path(s))}" for s in self.registry if self.has(s)
         )
 
     def model(self, slot):
@@ -121,20 +115,20 @@ class Engine:
     # ------------------------------------------------------------------ inference
     def run(self, slot, img, scale):
         """img: float32 (H, W, C) in [0, 1] → float32 (H*scale, W*scale, C). If the slot's model is
-        missing (or torch is), falls back to Lanczos and records the slot in `self.missing`."""
+        missing (or torch is), falls back to Lanczos and records the slot in `self.missing`.
+        """
         slot = self.resolve(slot)
         if self.has(slot):
             return self._run_model(slot, img, scale)
         if not self.allow_fallback:
-            raise RuntimeError(
-                "model for slot %r not available (%s)" % (slot, self.registry.get(slot))
-            )
+            raise RuntimeError(f"model for slot {slot!r} not available ({self.registry.get(slot)})")
         self.missing.add(slot)
         return lanczos(img, scale)
 
     def run_batch(self, slot, imgs, scale):
         """Several same-sized images through one forward pass (the batch dimension never mixes, so
-        each result equals `run` on that image alone). Falls back per image like `run`."""
+        each result equals `run` on that image alone). Falls back per image like `run`.
+        """
         if not imgs:
             return []
         slot = self.resolve(slot)
@@ -156,9 +150,7 @@ class Engine:
                         if len(chunk) > 1
                         else [self._run_model(slot, chunk[0], scale)]
                     )
-                except (
-                    RuntimeError
-                ) as e:  # CUDA OOM on a batch: fall back to one at a time
+                except RuntimeError as e:  # CUDA OOM on a batch: fall back to one at a time
                     if "out of memory" not in str(e).lower() or len(chunk) == 1:
                         raise
                     self.torch.cuda.empty_cache()
@@ -172,7 +164,7 @@ class Engine:
         ms = m.scale
         batch = isinstance(img, (list, tuple))
         imgs = list(img) if batch else [img]
-        H, W, C = imgs[0].shape
+        _H, _W, C = imgs[0].shape
         cin = m.input_channels
         xs = []
         for x in imgs:
@@ -202,14 +194,12 @@ class Engine:
 
     def _tiled(self, m, t, ms):
         torch = self.torch
-        N, C, H, W = t.shape
+        N, _C, H, W = t.shape
         tile, pad = self.tile, self.pad
-        if H <= tile + 2 * pad and W <= tile + 2 * pad:
+        if tile + 2 * pad >= H and tile + 2 * pad >= W:
             with torch.no_grad():
                 return m(_pad8(t))[:, :, : H * ms, : W * ms]
-        out = torch.zeros(
-            (N, m.output_channels, H * ms, W * ms), dtype=t.dtype, device=t.device
-        )
+        out = torch.zeros((N, m.output_channels, H * ms, W * ms), dtype=t.dtype, device=t.device)
         for y0 in range(0, H, tile):
             for x0 in range(0, W, tile):
                 y1, x1 = min(H, y0 + tile), min(W, x0 + tile)
@@ -234,7 +224,7 @@ def _pad8(t):
     has no such rule. It differs from reflect only in the invented rows, and those are exactly
     the ones cropped off the result.
     """
-    import torch.nn.functional as F
+    import torch.nn.functional as F  # noqa: N812 - the torch convention
 
     _, _, h, w = t.shape
     ph, pw = (-h) % 8, (-w) % 8
@@ -249,15 +239,11 @@ def lanczos(img, scale):
     from PIL import Image
 
     H, W, C = img.shape
-    nh, nw = max(1, int(round(H * scale))), max(1, int(round(W * scale)))
+    nh, nw = max(1, round(H * scale)), max(1, round(W * scale))
     out = np.empty((nh, nw, C), np.float32)
     for c in range(C):
-        im = Image.fromarray(
-            (np.clip(img[..., c], 0, 1) * 65535).astype(np.uint16), "I;16"
-        )
-        out[..., c] = (
-            np.asarray(im.resize((nw, nh), Image.LANCZOS), np.float32) / 65535.0
-        )
+        im = Image.fromarray((np.clip(img[..., c], 0, 1) * 65535).astype(np.uint16), "I;16")
+        out[..., c] = np.asarray(im.resize((nw, nh), Image.LANCZOS), np.float32) / 65535.0
     return out
 
 

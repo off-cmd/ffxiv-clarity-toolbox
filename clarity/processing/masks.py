@@ -1,6 +1,6 @@
 """Processing logic for material control masks."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
@@ -15,7 +15,7 @@ def do_mask(
     engine: "Engine",
     rgba: npt.NDArray[np.uint8],
     scale: int,
-    src_fmt: Optional[str],
+    src_fmt: str | None,
     family: str,
 ) -> npt.NDArray[np.float32]:
     """Upscale an FFXIV material mask.

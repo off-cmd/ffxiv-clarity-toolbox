@@ -46,9 +46,7 @@ def average_color_fix(
         return out
     ref = eng.box_down(src_up, f)
     low = eng.box_down(out, f)
-    corr = (
-        eng.lanczos(ref - low + 0.5, f) - 0.5
-    )  # lanczos works on [0,1]; shift the difference
+    corr = eng.lanczos(ref - low + 0.5, f) - 0.5  # lanczos works on [0,1]; shift the difference
     corr = corr[:H, :W]
     if corr.shape[:2] != (H, W):
         pad = np.zeros((H, W, C), np.float32)

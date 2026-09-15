@@ -8,6 +8,7 @@ Encoders, in order of preference:
 """
 
 import os
+import pathlib
 import struct
 import subprocess
 import tempfile
@@ -30,12 +31,8 @@ _CANDIDATES = [
         os.path.join(_HERE, "..", "..", "ffxiv_7_0_toolbox", "scripts", "texconv.exe")
     ),
 ]
-TEXCONV = next(
-    (c for c in _CANDIDATES if c and c != "none" and os.path.isfile(c)), _CANDIDATES[-1]
-)
-TEXCONV_GPU = os.environ.get(
-    "CLARITY_TEXCONV_GPU", "0"
-)  # DXGI adapter index; 0 = the RTX here
+TEXCONV = next((c for c in _CANDIDATES if c and c != "none" and os.path.isfile(c)), _CANDIDATES[-1])
+TEXCONV_GPU = os.environ.get("CLARITY_TEXCONV_GPU", "0")  # DXGI adapter index; 0 = the RTX here
 BC7, BC3, BC1, BGRA8 = 0x6432, 0x3431, 0x3420, 0x1450
 _probe = {}
 
@@ -92,11 +89,7 @@ def probe_texconv():
 
 def read(path_or_bytes):
     """-> (TexHeader, rgba uint8 (h, w, 4)) of mip 0."""
-    raw = (
-        kb.game().read(path_or_bytes)
-        if isinstance(path_or_bytes, str)
-        else path_or_bytes
-    )
+    raw = kb.game().read(path_or_bytes) if isinstance(path_or_bytes, str) else path_or_bytes
     hdr = kb.texfile.TexHeader(raw)
     return hdr, kb.texdecode.decode(raw, 0)
 
@@ -117,9 +110,7 @@ def _dds_rgba(rgba):
     """Uncompressed 32-bit RGBA DDS (what texconv reads as input)."""
     h, w = rgba.shape[:2]
     hdr = bytearray(124)
-    struct.pack_into(
-        "<7I", hdr, 0, 124, 0x1 | 0x2 | 0x4 | 0x1000 | 0x8, h, w, w * 4, 0, 1
-    )
+    struct.pack_into("<7I", hdr, 0, 124, 0x1 | 0x2 | 0x4 | 0x1000 | 0x8, h, w, w * 4, 0, 1)
     # pixel format: size 32, flags RGB|ALPHAPIXELS, bitcount 32, masks R G B A
     struct.pack_into(
         "<IIIIIIII",
@@ -203,7 +194,7 @@ def _texconv(rgba, fmt_name, mips, want_text=False):
     for _attempt in range(TEXCONV_TRIES):
         with tempfile.TemporaryDirectory(dir=paths.SCRATCH) as td:
             src = os.path.join(td, "in.dds")
-            open(src, "wb").write(_dds_rgba(rgba))
+            pathlib.Path(src).write_bytes(_dds_rgba(rgba))
             cmd = [
                 TEXCONV,
                 "-nologo",
@@ -222,13 +213,9 @@ def _texconv(rgba, fmt_name, mips, want_text=False):
             cmd.append(src)
             r = subprocess.run(cmd, capture_output=True, text=True, creationflags=flags)
             if r.returncode == 0:
-                out = open(os.path.join(td, "in.dds"), "rb").read()
+                out = pathlib.Path(td, "in.dds").read_bytes()
                 return (out, r.stdout + r.stderr) if want_text else out
-            text = (
-                " ".join((r.stdout or "").split())
-                + " | "
-                + " ".join((r.stderr or "").split())
-            )
+            text = " ".join((r.stdout or "").split()) + " | " + " ".join((r.stderr or "").split())
             last = "rc=%d ...%s" % (r.returncode, text[-300:])
     raise RuntimeError("texconv failed after %d tries: %s" % (TEXCONV_TRIES, last))
 
@@ -264,16 +251,15 @@ def encode(rgba, fmt=BC7, mips=None, attributes=None):
             d = buf.getvalue()
             blocks.append(_dds_split(d, 16, L.shape[1], L.shape[0], 1)[0])
         return kb.texwrite.write_blocks(BC3, blocks, w, h, attr)
-    raise ValueError("no encoder for format %#x" % fmt)
+    raise ValueError(f"no encoder for format {fmt:#x}")
 
 
 def float_chain(rgba_u8, n):
     """Box-filtered mip chain computed in float from the top level and rounded once per level —
     what texconv does internally, and what the old per-tier numpy path did — so the same pixels
-    come out whichever encoder runs. -> list of uint8 RGBA levels, largest first."""
-    cur = (
-        np.asarray(rgba_u8, np.float32) / 255.0
-    )  # same arithmetic as roles' old box_down path
+    come out whichever encoder runs. -> list of uint8 RGBA levels, largest first.
+    """
+    cur = np.asarray(rgba_u8, np.float32) / 255.0  # same arithmetic as roles' old box_down path
     levels = [np.asarray(rgba_u8, np.uint8)]
     for _ in range(1, n):
         h, w = cur.shape[:2]
@@ -291,10 +277,7 @@ def float_chain(rgba_u8, n):
 
 
 def _bgra_levels(levels_rgba):
-    return [
-        np.ascontiguousarray(L[:, :, [2, 1, 0, 3]], np.uint8).tobytes()
-        for L in levels_rgba
-    ]
+    return [np.ascontiguousarray(L[:, :, [2, 1, 0, 3]], np.uint8).tobytes() for L in levels_rgba]
 
 
 def _bgra_tex(levels_bytes, w, h, attributes):
@@ -316,7 +299,8 @@ def encode_tiers(rgba_top, fmt=BC7, attributes=None, offsets=(0,), keep_mips=Tru
     tier at offset k = mip levels k.. of that chain (dims >> k). Mip k of a box-filtered chain is
     exactly the 2×2 average the numpy path computed, so the tiers are the same pixels as before,
     encoded once instead of once per tier. `keep_mips=False` writes a single level per tier (for
-    sources that ship without a chain, e.g. UI). -> {offset: tex bytes}"""
+    sources that ship without a chain, e.g. UI). -> {offset: tex bytes}
+    """
     a = np.ascontiguousarray(rgba_top, np.uint8)
     h, w = a.shape[:2]
     n = full_mips(w, h)
@@ -341,7 +325,7 @@ def encode_tiers(rgba_top, fmt=BC7, attributes=None, offsets=(0,), keep_mips=Tru
             Image.fromarray(L, "RGBA").save(buf, "DDS", pixel_format="DXT5")
             levels.append(_dds_split(buf.getvalue(), 16, L.shape[1], L.shape[0], 1)[0])
     else:
-        raise ValueError("no chain encoder for format %#x" % fmt)
+        raise ValueError(f"no chain encoder for format {fmt:#x}")
     out = {}
     for k in offsets:
         if k >= len(levels):

@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import pathlib
 import sys
 import time
 import traceback
@@ -33,10 +34,7 @@ def cmd_plan(a):
     # is worse than useless -- it hides the real number.
     n, why = mf.sync_skipped(man)
     if n:
-        print(
-            "status sync: %d planned row(s) had no processing path and are now 'skipped'"
-            % n
-        )
+        print("status sync: %d planned row(s) had no processing path and are now 'skipped'" % n)
         for k, c_ in why.most_common():
             print("    %-52s %6d" % (k[:52], c_))
     cmd_estimate(a)
@@ -87,8 +85,9 @@ def cmd_estimate(a):
         for k in est:
             tot[k] += est[k]
     print(
-        "TOTAL src %.1f GB -> native %.1f GB, 2x %.1f GB, 4x %.1f GB (each tier is a full separate set)"
-        % (tot["src"] / 1e9, tot["native"] / 1e9, tot["2x"] / 1e9, tot["4x"] / 1e9)
+        "TOTAL src {:.1f} GB -> native {:.1f} GB, 2x {:.1f} GB, 4x {:.1f} GB (each tier is a full separate set)".format(
+            tot["src"] / 1e9, tot["native"] / 1e9, tot["2x"] / 1e9, tot["4x"] / 1e9
+        )
     )
 
 
@@ -100,20 +99,17 @@ def check_encoder(a):
     p = texio.probe_texconv()
     if p.get("debug"):
         print(
-            "WARNING: %s is a Debug build (imports ucrtbased.dll) — it cannot create a D3D device and uses an unoptimised CPU codec."
-            % texio.TEXCONV
+            f"WARNING: {texio.TEXCONV} is a Debug build (imports ucrtbased.dll) — it cannot create a D3D device and uses an unoptimised CPU codec."
         )
     if p["ok"] and p["gpu"]:
-        line = [l for l in p["text"].splitlines() if "DirectCompute" in l]
+        line = [ln for ln in p["text"].splitlines() if "DirectCompute" in ln]
         print(
-            "encoder: texconv on the GPU — %s (%.2fs for a 64x64 probe)"
-            % (line[0].strip() if line else "?", p["seconds"])
+            "encoder: texconv on the GPU — {} ({:.2f}s for a 64x64 probe)".format(
+                line[0].strip() if line else "?", p["seconds"]
+            )
         )
         return True
-    print(
-        "encoder: texconv says: %s"
-        % (p["text"].splitlines()[-1] if p["text"] else "no output")
-    )
+    print("encoder: texconv says: %s" % (p["text"].splitlines()[-1] if p["text"] else "no output"))
     if os.environ.get("CLARITY_ALLOW_CPU_BC7") == "1":
         print("CLARITY_ALLOW_CPU_BC7=1 — continuing on the CPU codec anyway")
         return True
@@ -125,17 +121,16 @@ def check_encoder(a):
     return False
 
 
-def estimate_output_bytes(
-    man, families, top_override=None, since=None, status="planned"
-):
+def estimate_output_bytes(man, families, top_override=None, since=None, status="planned"):
     """Bytes the queued rows will WRITE, per tier. Same arithmetic as `estimate`, restricted to the
-    families this run will actually walk."""
+    families this run will actually walk.
+    """
     tot = {"native": 0.0, "2x": 0.0, "4x": 0.0}
     n = 0
     q = "SELECT family,w,h,fmt FROM tex WHERE status=?"
     args = [status]
     if families:
-        q += " AND family IN (%s)" % ",".join("?" * len(families))
+        q += " AND family IN ({})".format(",".join("?" * len(families)))
         args += list(families)
     for fam, w, h, fmt in man.db.execute(q, args):
         top = roles.top_tier(fam, w, h, top_override)
@@ -168,11 +163,9 @@ def check_disk(a, man, families):
     import shutil
 
     try:
-        usage = shutil.disk_usage(
-            a.out if os.path.isdir(a.out) else os.path.dirname(a.out) or "."
-        )
+        usage = shutil.disk_usage(a.out if os.path.isdir(a.out) else os.path.dirname(a.out) or ".")
     except OSError as e:
-        print("disk: could not measure free space at %s (%s)" % (a.out, e))
+        print(f"disk: could not measure free space at {a.out} ({e})")
         return True
     n, tot = estimate_output_bytes(man, families, a.top)
     want = sum(tot[t] for t in tot if not a.tiers or t in a.tiers)
@@ -190,12 +183,8 @@ def check_disk(a, man, families):
     print("         Options, cheapest first:")
     print("           --tiers 2x            one tier instead of three")
     print("           --family <name>       the families you actually look at")
-    print(
-        "           --out <path>          a volume with room (CLARITY_OUT also sets it)"
-    )
-    print(
-        "         Each tier is a COMPLETE separate set, so three tiers is three times the bytes."
-    )
+    print("           --out <path>          a volume with room (CLARITY_OUT also sets it)")
+    print("         Each tier is a COMPLETE separate set, so three tiers is three times the bytes.")
     if a.strict_disk:
         print("STOP: --strict-disk was given.")
         return False
@@ -211,8 +200,7 @@ def cmd_run(a):
     man = mf.Manifest(a.db)
     engine = Engine(a.models, device=a.device, tile=a.tile, allow_fallback=not a.strict)
     print(
-        "engine: device=%s models=%s (%s) texconv=%s"
-        % (
+        "engine: device={} models={} ({}) texconv={}".format(
             engine.device,
             a.models,
             engine.describe() or "NO MODELS",
@@ -238,13 +226,12 @@ def cmd_run(a):
         "Output estimate above is a legacy upper bound; everyday writes only the selected product per resource."
     )
     gamever = kb.sqpack.game_version(kb.game().sqpack)
-    print("game version: %s (recorded on every row this run finishes)" % gamever)
+    print(f"game version: {gamever} (recorded on every row this run finishes)")
     since = None
     if a.since:
         since = time.mktime(time.strptime(a.since, "%Y-%m-%d"))
         print(
-            "only the patch delta: rows enumerated on/after %s, plus rows a fingerprint check re-queued"
-            % a.since
+            f"only the patch delta: rows enumerated on/after {a.since}, plus rows a fingerprint check re-queued"
         )
     t0 = time.time()
     counts = {"done": 0, "failed": 0}
@@ -293,7 +280,7 @@ def cmd_run(a):
                 continue
             dst = os.path.join(a.out, mod, packer.file_rel(tier, path))
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            open(dst, "wb").write(texs[k])
+            pathlib.Path(dst).write_bytes(texs[k])
             wrote.append(tier)
         return wrote, time.time() - t_enc
 
@@ -331,7 +318,7 @@ def cmd_run(a):
                 )
                 counts["done"] += 1
                 if a.verbose or counts["done"] <= 5:
-                    print("  %s  model %.1fs  encode %.1fs" % (info, t2 - t1, enc_s))
+                    print(f"  {info}  model {t2 - t1:.1f}s  encode {enc_s:.1f}s")
             except Exception as e:
                 if interrupted:
                     # NOT A FAILURE. On Windows a Ctrl+C goes to the whole process GROUP, so the
@@ -342,12 +329,11 @@ def cmd_run(a):
                     # cosmetic: 'failed' rows are not 'planned' rows, so the texture silently never
                     # comes back unless somebody thinks to run `requeue --failed`. Exactly one row
                     # per run, one per Ctrl+C, which is precisely how the three of them accumulated.
-                    man.set_status(
-                        path, "planned", note="interrupted mid-encode; will be redone"
-                    )
+                    man.set_status(path, "planned", note="interrupted mid-encode; will be redone")
                     print(
-                        "  (interrupted during %s -- left planned, not failed)"
-                        % path.rsplit("/", 1)[-1]
+                        "  (interrupted during {} -- left planned, not failed)".format(
+                            path.rsplit("/", 1)[-1]
+                        )
                     )
                 else:
                     counts["failed"] += 1
@@ -372,7 +358,8 @@ def cmd_run(a):
         def run_group(group, role):
             """One model call per stage for a run of same-sized UI textures (see roles.do_ui_batch).
             Decode failures drop out of the group and are recorded individually, so one bad file
-            cannot take the batch with it."""
+            cannot take the batch with it.
+            """
             ready = []
             for path, mod, top, w, h, fmt in group:
                 try:
@@ -390,9 +377,7 @@ def cmd_run(a):
                 flush=True,
             )
             t1 = time.time()
-            imgs = roles.process_top_batch(
-                engine, role, None, [r[7] for r in ready], ready[0][2]
-            )
+            imgs = roles.process_top_batch(engine, role, None, [r[7] for r in ready], ready[0][2])
             t2 = time.time()
             per = (t2 - t1) / len(ready)
             for (path, mod, top, w, h, fmt, hdr, _), img in zip(ready, imgs):
@@ -421,7 +406,7 @@ def cmd_run(a):
                 reap()
 
         for family in families:
-            print("\n>>> Starting family: %s" % family, flush=True)
+            print(f"\n>>> Starting family: {family}", flush=True)
             for role in ("normal", "mask", "color", "icon", "ui"):
                 rows = man.rows(
                     family=family,
@@ -442,17 +427,13 @@ def cmd_run(a):
                     # icons alternate 40x40 / 80x80 (`000001.tex`, `000001_hr1.tex`), so a
                     # run-length grouping produced batches of one to three and saved nothing.
                     buckets = {}
-                    for path, fam, part, role_, w, h, fmt, mips, status, tiers in rows:
+                    for path, fam, _part, role_, w, h, fmt, _mips, _status, _tiers in rows:
                         mod = packer.mod_for_family(fam)
-                        top = release.generation_tier(
-                            fam, role_, path, w, h, a.top, a.profile
-                        )
+                        top = release.generation_tier(fam, role_, path, w, h, a.top, a.profile)
                         if mod is None or top is None:
                             man.set_status(path, "skipped", note="policy")
                             continue
-                        buckets.setdefault((w, h, top), []).append(
-                            (path, mod, top, w, h, fmt)
-                        )
+                        buckets.setdefault((w, h, top), []).append((path, mod, top, w, h, fmt))
                     if buckets:
                         px = sum(k[0] * k[1] * len(v) for k, v in buckets.items())
                         big = sorted(buckets.items(), key=lambda kv: -len(kv[1]))[:3]
@@ -464,9 +445,7 @@ def cmd_run(a):
                                 sum(len(v) for v in buckets.values()),
                                 len(buckets),
                                 px / 1e6,
-                                ", ".join(
-                                    "%dx%d x%d" % (k[0], k[1], len(v)) for k, v in big
-                                ),
+                                ", ".join("%dx%d x%d" % (k[0], k[1], len(v)) for k, v in big),
                             ),
                             flush=True,
                         )
@@ -477,9 +456,7 @@ def cmd_run(a):
                         # would be 59 M. Big sheets simply fall back to one at a time, where they
                         # were anyway.
                         w_, h_ = key[0], key[1]
-                        n = max(
-                            1, min(a.icon_batch, (2 * 1024 * 1024) // max(1, w_ * h_))
-                        )
+                        n = max(1, min(a.icon_batch, (2 * 1024 * 1024) // max(1, w_ * h_)))
                         for s in range(0, len(items), n):
                             if a.budget and time.time() - t0 > a.budget:
                                 break
@@ -495,7 +472,7 @@ def cmd_run(a):
                         )
                         return 3
                     continue
-                for path, fam, part, role_, w, h, fmt, mips, status, tiers in rows:
+                for path, fam, _part, role_, w, h, fmt, _mips, _status, _tiers in rows:
                     if a.budget and time.time() - t0 > a.budget:
                         reap(True)
                         print(
@@ -504,9 +481,7 @@ def cmd_run(a):
                         )
                         return 3
                     mod = packer.mod_for_family(fam)
-                    top = release.generation_tier(
-                        fam, role_, path, w, h, a.top, a.profile
-                    )
+                    top = release.generation_tier(fam, role_, path, w, h, a.top, a.profile)
                     if mod is None or top is None:
                         man.set_status(path, "skipped", note="policy")
                         continue
@@ -514,17 +489,11 @@ def cmd_run(a):
                         t1 = time.time()
                         raw = texio.read_raw(path)
                         hdr, rgba = texio.read(raw)
-                        img = roles.process_top(
-                            engine, role_, fam, rgba, hdr.format_name, top
-                        )
+                        img = roles.process_top(engine, role_, fam, rgba, hdr.format_name, top)
                         # UI atlases: redo each ULD sprite from its own padded crop, so the model's
                         # receptive field cannot reach across a seam between two abutting sprites.
                         # See uldparts -- JobHudXBM1 alone has 93 touching pairs among 49 parts.
-                        if (
-                            fam == "ui-uld"
-                            and not a.no_uld_parts
-                            and roles.TIER_SCALE[top] > 1
-                        ):
+                        if fam == "ui-uld" and not a.no_uld_parts and roles.TIER_SCALE[top] > 1:
                             rects = uldparts.rects_for(
                                 kb.game(),
                                 path,
@@ -536,9 +505,7 @@ def cmd_run(a):
                                 uld_stats["sheets"] += 1
                                 uld_stats["parts"] += len(rects)
                                 img = uldparts.upscale_by_parts(
-                                    lambda cs: roles.process_top_batch(
-                                        engine, role_, fam, cs, top
-                                    ),
+                                    lambda cs: roles.process_top_batch(engine, role_, fam, cs, top),
                                     rgba,
                                     roles.TIER_SCALE[top],
                                     rects,
@@ -560,8 +527,7 @@ def cmd_run(a):
                             (
                                 path,
                                 fut,
-                                "%s %dx%d %s -> %s"
-                                % (path.rsplit("/", 1)[-1], w, h, fmt, top),
+                                "%s %dx%d %s -> %s" % (path.rsplit("/", 1)[-1], w, h, fmt, top),
                                 t1,
                                 t2,
                                 src_fingerprint(path),
@@ -639,13 +605,13 @@ def cmd_qa(a):
 
     random.seed(1)
     sample = random.sample(rows, min(a.samples, len(rows)))
-    for path, family, part, role, w, h, fmt, mips, status, tiers in sample:
+    for path, family, _part, role, w, h, fmt, _mips, _status, tiers in sample:
         top = (tiers or "").split(",")[0]
         mod = packer.mod_for_family(family)
         f = os.path.join(a.out, mod, packer.file_rel(top, path))
         if not os.path.isfile(f):
             continue
-        hdr, out = texio.read(open(f, "rb").read())
+        hdr, out = texio.read(pathlib.Path(f).read_bytes())
         _, src = texio.read(path)
         s = out.shape[0] // src.shape[0]
         msg = [
@@ -660,14 +626,10 @@ def cmd_qa(a):
         from .processing.engine import box_down
 
         srcf = src.astype(np.float32) / 255
-        outf = (
-            box_down(out.astype(np.float32) / 255, s)
-            if s > 1
-            else out.astype(np.float32) / 255
-        )
+        outf = box_down(out.astype(np.float32) / 255, s) if s > 1 else out.astype(np.float32) / 255
         outf = outf[: srcf.shape[0], : srcf.shape[1]]
         d = np.abs(outf - srcf).mean((0, 1))
-        msg.append("mean|Δ| R %.3f G %.3f B %.3f A %.3f" % tuple(d))
+        msg.append("mean|Δ| R {:.3f} G {:.3f} B {:.3f} A {:.3f}".format(*tuple(d)))
         print("  ".join(msg), path)
 
 
@@ -676,8 +638,9 @@ def cmd_modup(a):
 
     engine = Engine(a.models, device=a.device, allow_fallback=not a.strict)
     print(
-        "engine: device=%s models=%s texconv=%s"
-        % (engine.device, a.models, texio.TEXCONV if texio.use_texconv() else "numpy")
+        "engine: device={} models={} texconv={}".format(
+            engine.device, a.models, texio.TEXCONV if texio.use_texconv() else "numpy"
+        )
     )
     if not check_encoder(a):
         return 2
@@ -695,8 +658,7 @@ def cmd_modup(a):
         )
     if engine.missing:
         print(
-            "NOTE: Lanczos fallback was used for slots %s — put the models in %s for the real thing"
-            % (sorted(engine.missing), a.models)
+            f"NOTE: Lanczos fallback was used for slots {sorted(engine.missing)} — put the models in {a.models} for the real thing"
         )
 
 
@@ -709,9 +671,7 @@ OUT_DEFAULT = os.environ.get("CLARITY_OUT", DEFAULT_OUT)
 # Penumbra's own config dir on this machine; `pack` merges the mods into the Default collection there.
 PENUMBRA_CONFIG_DEFAULT = os.environ.get(
     "CLARITY_PENUMBRA_CONFIG",
-    os.path.join(
-        os.environ.get("APPDATA", ""), "XIVLauncher", "pluginConfigs", "Penumbra"
-    ),
+    os.path.join(os.environ.get("APPDATA", ""), "XIVLauncher", "pluginConfigs", "Penumbra"),
 )
 
 DECODABLE = {
@@ -729,6 +689,8 @@ DECODABLE = {
     "L8",
     "A8",
 }
+
+
 def cmd_reclassify(a):
     """Re-run classify() over rows already in the manifest and write back what changed.
 
@@ -745,7 +707,7 @@ def cmd_reclassify(a):
     man = mf.Manifest(a.db)
     sql, args = "1=1", []
     if a.family:
-        sql += " AND family IN (%s)" % ",".join("?" * len(a.family))
+        sql += " AND family IN ({})".format(",".join("?" * len(a.family)))
         args += a.family
     if a.path_like:
         sql += " AND path LIKE ?"
@@ -776,7 +738,7 @@ def cmd_reclassify(a):
     # Without it the summary reads "bg/color -> bg/color 61,344", which looks like a no-op loop.
     seen = {}
     for _p, f, pt, r, nf, npt, nr in changes:
-        k = "%s[%s]/%s -> %s[%s]/%s" % (f, pt or "-", r, nf, npt or "-", nr)
+        k = "{}[{}]/{} -> {}[{}]/{}".format(f, pt or "-", r, nf, npt or "-", nr)
         seen[k] = seen.get(k, 0) + 1
     for k, n in sorted(seen.items(), key=lambda x: -x[1])[:30]:
         print("  %-58s %7d" % (k, n))
@@ -828,23 +790,19 @@ def cmd_requeue(a):
         # start the 100-GPU-hour job again", which nobody means to type.
         if not (a.family or a.role or a.path_like):
             print("--done needs at least one of --family / --role / --path-like:")
-            print(
-                "  on its own it would requeue every finished texture in the manifest."
-            )
+            print("  on its own it would requeue every finished texture in the manifest.")
             return 2
         where.append("status = 'done'")
     if not where:
-        print(
-            "nothing selected: pass --failed, --skipped, --old-recipe, --without-model NAME,"
-        )
+        print("nothing selected: pass --failed, --skipped, --old-recipe, --without-model NAME,")
         print("or --done with --family/--role/--path-like (for a processing change)")
         return 2
     sql = "(" + " OR ".join(where) + ")"
     if a.family:
-        sql += " AND family IN (%s)" % ",".join("?" * len(a.family))
+        sql += " AND family IN ({})".format(",".join("?" * len(a.family)))
         args += a.family
     if a.role:
-        sql += " AND role IN (%s)" % ",".join("?" * len(a.role))
+        sql += " AND role IN ({})".format(",".join("?" * len(a.role)))
         args += a.role
     if a.path_like:
         sql += " AND path LIKE ?"
@@ -895,7 +853,7 @@ def _bar(done, total, width=44):
         return "[%s]" % ("?" * width)
     f = done / total
     n = int(f * width)
-    return "[%s%s] %5.1f%%" % ("#" * n, "." * (width - n), 100 * f)
+    return "[{}{}] {:5.1f}%".format("#" * n, "." * (width - n), 100 * f)
 
 
 def cmd_fingerprint(a):
@@ -924,9 +882,7 @@ def cmd_fingerprint(a):
     version = kb.sqpack.game_version(gd.sqpack)
 
     if a.export:
-        return export_fingerprints(
-            man, a.export if a.export != "-" else paths.FINGERPRINTS
-        )
+        return export_fingerprints(man, a.export if a.export != "-" else paths.FINGERPRINTS)
 
     if a.log:
         rows = man.snapshots()
@@ -937,7 +893,7 @@ def cmd_fingerprint(a):
             "%-19s %-22s %-7s %8s %8s %7s  %s"
             % ("when", "game version", "mode", "hashed", "changed", "gone", "note")
         )
-        for ts, ver, mode, nh, nc, ng, nn, note in rows:
+        for ts, ver, mode, nh, nc, ng, _nn, note in rows:
             print(
                 "%-19s %-22s %-7s %8d %8d %7d  %s"
                 % (
@@ -956,7 +912,7 @@ def cmd_fingerprint(a):
     if not a.all:
         where.append("status = 'done'")
     if a.family:
-        where.append("family IN (%s)" % ",".join("?" * len(a.family)))
+        where.append("family IN ({})".format(",".join("?" * len(a.family))))
         args += a.family
     if a.path_like:
         where.append("path LIKE ?")
@@ -968,23 +924,16 @@ def cmd_fingerprint(a):
     sql = " AND ".join(where) or "1=1"
 
     rows = man.db.execute(
-        "SELECT path, srchash, srcver, family, status FROM tex WHERE "
-        + sql
-        + " ORDER BY path",
+        "SELECT path, srchash, srcver, family, status FROM tex WHERE " + sql + " ORDER BY path",
         args,
     ).fetchall()
     total = len(rows)
     mode = "check" if a.check else ("restamp" if a.restamp else "stamp")
-    print("game version: %s" % version)
-    print(
-        "%s %d row(s)%s"
-        % (mode, total, "" if a.all else " (status=done; --all for every row)")
-    )
+    print(f"game version: {version}")
+    print("%s %d row(s)%s" % (mode, total, "" if a.all else " (status=done; --all for every row)"))
     if not total:
         if mode == "stamp":
-            print(
-                "  every selected row already carries a hash — use --restamp to take them again,"
-            )
+            print("  every selected row already carries a hash — use --restamp to take them again,")
             print("  or --check to compare them against the install as it stands now")
         else:
             print(
@@ -995,7 +944,7 @@ def cmd_fingerprint(a):
     t0 = time.time()
     changed, gone, unstamped, ok = [], [], 0, 0
     writes = []
-    for i, (path, old, oldver, family, status) in enumerate(rows):
+    for i, (path, old, oldver, family, _status) in enumerate(rows):
         h = src_fingerprint(path, gd)
         if h is None:
             gone.append((path, family))
@@ -1023,10 +972,7 @@ def cmd_fingerprint(a):
         man.commit()
         print("  stamped %d row(s) at %s" % (len(writes), version))
     if gone:
-        print(
-            "\n  %d path(s) no longer in the index (removed or renamed by a patch):"
-            % len(gone)
-        )
+        print("\n  %d path(s) no longer in the index (removed or renamed by a patch):" % len(gone))
         for p, fam in gone[:15]:
             print("    %-10s %s" % (fam, p))
         if len(gone) > 15:
@@ -1043,9 +989,7 @@ def cmd_fingerprint(a):
                 print("    %-14s %6d" % (fam, n))
             print("\n  first %d:" % min(15, len(changed)))
             for p, fam, o, n, ov in changed[:15]:
-                print(
-                    "    %-10s %s  %s(%s) -> %s" % (fam, p, o[:12], ov or "?", n[:12])
-                )
+                print("    %-10s %s  %s(%s) -> %s" % (fam, p, o[:12], ov or "?", n[:12]))
             if a.requeue:
                 man.db.executemany(
                     "UPDATE tex SET status='planned', tiers='', note=? WHERE path=?",
@@ -1057,15 +1001,11 @@ def cmd_fingerprint(a):
                     % len(changed)
                 )
             else:
-                print(
-                    "\n  nothing written (add --requeue to send these back through the model)"
-                )
+                print("\n  nothing written (add --requeue to send these back through the model)")
         print(
             "\n  note: this compares rows the manifest already knows about. Content a patch *adds*"
         )
-        print(
-            "        shows up only when the manifest is re-enumerated — rerun `clarity plan`"
-        )
+        print("        shows up only when the manifest is re-enumerated — rerun `clarity plan`")
         print(
             "        (--chara --icons, and --pathlist with a fresh ResLogger list for bg/ and ui/uld/)."
         )
@@ -1100,7 +1040,7 @@ def export_fingerprints(man, out):
             "# clarity texture fingerprints: path, BLAKE2b of the compressed sqpack entry, game version it was taken on, status\n"
         )
         for path, h, ver, status in rows:
-            f.write("%s\t%s\t%s\t%s\n" % (path, h, ver, status))
+            f.write(f"{path}\t{h}\t{ver}\t{status}\n")
     os.replace(tmp, out)
     print("exported %d fingerprint(s) -> %s" % (len(rows), out))
     return 0
@@ -1108,7 +1048,7 @@ def export_fingerprints(man, out):
 
 def _fmt_eta(s):
     if s < 90:
-        return "%.0fs" % s
+        return f"{s:.0f}s"
     if s < 5400:
         return "%.0fm" % (s / 60)
     return "%.1fh" % (s / 3600)
@@ -1119,13 +1059,14 @@ def cmd_audit(a):
     man = mf.Manifest(a.db)
     q = lambda s, *p: man.db.execute(s, p).fetchall()
     print("status:", dict(q("SELECT status, COUNT(*) FROM tex GROUP BY status")))
-    roles_in = ",".join("'%s'" % r for r in mf.PROCESSED_ROLES)
+    roles_in = ",".join(f"'{r}'" for r in mf.PROCESSED_ROLES)
 
     print("\nformats with no decoder, in a role the run processes:")
     bad = q(
-        "SELECT fmt, family, role, COUNT(*) FROM tex WHERE role IN (%s) AND fmt NOT IN (%s)"
-        " GROUP BY fmt, family, role ORDER BY 4 DESC"
-        % (roles_in, ",".join("'%s'" % f for f in sorted(DECODABLE)))
+        "SELECT fmt, family, role, COUNT(*) FROM tex WHERE role IN ({}) AND fmt NOT IN ({})"
+        " GROUP BY fmt, family, role ORDER BY 4 DESC".format(
+            roles_in, ",".join(f"'{f}'" for f in sorted(DECODABLE))
+        )
     )
     for fmt, fam, role, n in bad:
         print("  %-14s %-10s %-6s %7d   <-- would fail" % (fmt, fam, role, n))
@@ -1135,7 +1076,7 @@ def cmd_audit(a):
     print("\nsmaller than the 8 px pad (replicate padding, no tiling):")
     for w, h, fmt, role, n in q(
         "SELECT w, h, fmt, role, COUNT(*) FROM tex WHERE (w < 8 OR h < 8)"
-        " AND role IN (%s) GROUP BY w, h, fmt, role ORDER BY 5 DESC LIMIT 6" % roles_in
+        f" AND role IN ({roles_in}) GROUP BY w, h, fmt, role ORDER BY 5 DESC LIMIT 6"
     ):
         print("  %2dx%-3d %-6s %-6s %6d" % (w, h, fmt, role, n))
 
@@ -1144,8 +1085,8 @@ def cmd_audit(a):
     # the encoder's partial last block.
     print("\nnot a multiple of 4 (the block size; the encoder pads the last block):")
     for w, h, role, n in q(
-        "SELECT w, h, role, COUNT(*) FROM tex WHERE (w %% 4 OR h %% 4)"
-        " AND role IN (%s) GROUP BY w, h, role ORDER BY 4 DESC LIMIT 6" % roles_in
+        "SELECT w, h, role, COUNT(*) FROM tex WHERE (w % 4 OR h % 4)"
+        f" AND role IN ({roles_in}) GROUP BY w, h, role ORDER BY 4 DESC LIMIT 6"
     ):
         print("  %dx%-4d %-6s %6d" % (w, h, role, n))
 
@@ -1182,9 +1123,7 @@ def cmd_audit(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="clarity")
-    ap.add_argument(
-        "--db", default=paths.DB, help="manifest database (default: %(default)s)"
-    )
+    ap.add_argument("--db", default=paths.DB, help="manifest database (default: %(default)s)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("plan")
     p.add_argument(
@@ -1223,8 +1162,7 @@ def main(argv=None):
     p.add_argument(
         "--strict-disk",
         action="store_true",
-        help="stop rather than warn when the queued output will not fit on the "
-        "destination volume",
+        help="stop rather than warn when the queued output will not fit on the destination volume",
     )
     p.add_argument(
         "--no-uld-parts",
@@ -1265,9 +1203,7 @@ def main(argv=None):
         help="Penumbra's plugin config dir, to enable the mods in the Default collection (default: %(default)s; pass '' to skip)",
     )
     p.set_defaults(fn=cmd_pack)
-    p = sub.add_parser(
-        "probe", help="check which BC7 encoder will be used (GPU texconv or not)"
-    )
+    p = sub.add_parser("probe", help="check which BC7 encoder will be used (GPU texconv or not)")
     p.set_defaults(fn=lambda a: 0 if check_encoder(a) else 2)
     p = sub.add_parser("qa")
     p.add_argument("--out", default=OUT_DEFAULT)
@@ -1298,9 +1234,7 @@ def main(argv=None):
     )
     p.add_argument("--family", action="append")
     p.add_argument("--role", action="append")
-    p.add_argument(
-        "--path-like", help="SQL LIKE on the path, e.g. chara/equipment/e08%%"
-    )
+    p.add_argument("--path-like", help="SQL LIKE on the path, e.g. chara/equipment/e08%%")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(fn=cmd_requeue)
     p = sub.add_parser(
@@ -1342,14 +1276,10 @@ def main(argv=None):
         action="store_true",
         help="re-take hashes that already exist (adopt the current install)",
     )
-    p.add_argument(
-        "--all", action="store_true", help="every row, not just status='done'"
-    )
+    p.add_argument("--all", action="store_true", help="every row, not just status='done'")
     p.add_argument("--family", action="append")
     p.add_argument("--path-like")
-    p.add_argument(
-        "--log", action="store_true", help="show the recorded fingerprint runs and stop"
-    )
+    p.add_argument("--log", action="store_true", help="show the recorded fingerprint runs and stop")
     p.add_argument(
         "--export",
         nargs="?",
@@ -1363,9 +1293,7 @@ def main(argv=None):
         help="print the resolved layout (database, models, texconv, KB tools, path list)",
     )
     p.set_defaults(fn=lambda a: print(paths.describe()) or 0)
-    p = sub.add_parser(
-        "modup", help="upscale the textures inside existing mods (icon packs)"
-    )
+    p = sub.add_parser("modup", help="upscale the textures inside existing mods (icon packs)")
     p.add_argument("--mod", action="append", required=True)
     p.add_argument("--out", default=OUT_DEFAULT)
     p.add_argument("--models", default=paths.MODELS)

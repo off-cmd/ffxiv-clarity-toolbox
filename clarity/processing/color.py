@@ -1,6 +1,6 @@
 """Processing logic for color (albedo/diffuse) maps."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
@@ -16,7 +16,7 @@ def do_color(
     engine: "Engine",
     rgba: npt.NDArray[np.uint8],
     scale: int,
-    src_fmt: Optional[str],
+    src_fmt: str | None,
     family: str,
 ) -> npt.NDArray[np.float32]:
     """Upscale an FFXIV color (albedo) map.
@@ -58,9 +58,5 @@ def do_color(
         out = average_color_fix(out, eng.lanczos(rgb, scale))
     else:
         out = rgb
-    a = (
-        gray(engine, x[..., 3], scale, slot="ui")
-        if has_alpha(rgba)
-        else np.ones_like(out[..., 0])
-    )
+    a = gray(engine, x[..., 3], scale, slot="ui") if has_alpha(rgba) else np.ones_like(out[..., 0])
     return np.dstack([out, a]).astype(np.float32)

@@ -28,8 +28,7 @@ def _manifest(tmp_path) -> manifest.Manifest:
 
 def _notes(man: manifest.Manifest) -> dict[str, tuple[str, str]]:
     return {
-        p: (s, n)
-        for p, s, n in man.db.execute("SELECT path, status, note FROM tex ORDER BY path")
+        p: (s, n) for p, s, n in man.db.execute("SELECT path, status, note FROM tex ORDER BY path")
     }
 
 
@@ -37,8 +36,16 @@ def test_requeue_keeps_the_changed_marker_and_clears_other_notes(tmp_path, monke
     man = _manifest(tmp_path)
     monkeypatch.setattr(manifest, "Manifest", lambda _db: man)
     args = argparse.Namespace(
-        db="unused", failed=True, skipped=False, old_recipe=False, without_model=None,
-        done=False, family=None, role=None, path_like=None, dry_run=False,
+        db="unused",
+        failed=True,
+        skipped=False,
+        old_recipe=False,
+        without_model=None,
+        done=False,
+        family=None,
+        role=None,
+        path_like=None,
+        dry_run=False,
     )
     assert cli.cmd_requeue(args) == 0
     notes = _notes(man)
@@ -51,8 +58,16 @@ def test_since_still_selects_the_requeued_changed_row(tmp_path, monkeypatch) -> 
     man = _manifest(tmp_path)
     monkeypatch.setattr(manifest, "Manifest", lambda _db: man)
     args = argparse.Namespace(
-        db="unused", failed=True, skipped=False, old_recipe=False, without_model=None,
-        done=False, family=None, role=None, path_like=None, dry_run=False,
+        db="unused",
+        failed=True,
+        skipped=False,
+        old_recipe=False,
+        without_model=None,
+        done=False,
+        family=None,
+        role=None,
+        path_like=None,
+        dry_run=False,
     )
     cli.cmd_requeue(args)
     delta = [r[0] for r in man.rows(status="planned", since="2999-01-01")]

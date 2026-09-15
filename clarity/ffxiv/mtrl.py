@@ -33,6 +33,7 @@ Anno chose (F1 0.70 against 0.45 for upgrading everything). It is a starting poi
 reproduction.
 """
 
+import pathlib
 import struct
 import sys
 
@@ -72,14 +73,14 @@ class Mtrl:
         self.dataset = bytearray(data[p : p + self.dataset_size])
         p += self.dataset_size
 
-        def S(o):
+        def string_at(o):
             e = strtab.find(b"\0", o)
             return strtab[o : e if e >= 0 else None].decode("ascii", "replace")
 
-        self.textures = [(S(o), f) for o, f in tex]
-        self.uvsets = [(S(o), i, u) for o, i, u in uv]
-        self.colorsets = [(S(o), i, u) for o, i, u in cs]
-        self.shpk = S(shoff)
+        self.textures = [(string_at(o), f) for o, f in tex]
+        self.uvsets = [(string_at(o), i, u) for o, i, u in uv]
+        self.colorsets = [(string_at(o), i, u) for o, i, u in cs]
+        self.shpk = string_at(shoff)
 
         svl, kc, cc, sc, self.unk1, self.unk2 = struct.unpack_from("<6H", data, p)
         p += 12
@@ -87,15 +88,11 @@ class Mtrl:
         p += 8 * kc
         cons = [struct.unpack_from("<IHH", data, p + 8 * i) for i in range(cc)]
         p += 8 * cc
-        self.samplers = [
-            struct.unpack_from("<IIB", data, p + 12 * i) for i in range(sc)
-        ]
+        self.samplers = [struct.unpack_from("<IIB", data, p + 12 * i) for i in range(sc)]
         p += 12 * sc
         vals = list(struct.unpack_from("<%df" % (svl // 4), data, p))
         # keep each constant with its own slice of the value array, so dropping one is safe
-        self.constants = [
-            (cid, vals[off // 4 : (off + size) // 4]) for cid, off, size in cons
-        ]
+        self.constants = [(cid, vals[off // 4 : (off + size) // 4]) for cid, off, size in cons]
 
     # ---------------------------------------------------------------- colour table
 
@@ -106,11 +103,7 @@ class Mtrl:
             return None
         import numpy as np
 
-        return (
-            np.frombuffer(bytes(self.dataset[:2048]), dtype="<f2")
-            .reshape(32, 32)
-            .astype("f4")
-        )
+        return np.frombuffer(bytes(self.dataset[:2048]), dtype="<f2").reshape(32, 32).astype("f4")
 
     def set_rows(self, arr):
         import numpy as np
@@ -188,20 +181,19 @@ class Mtrl:
     def migrate(self, shpk=DT_SHPK):
         """The provably safe half: shader package, and the key/constants that only legacy has.
 
-        Returns a list of what changed."""
+        Returns a list of what changed.
+        """
         log = []
         if self.shpk.lower() == shpk.lower():
             return log
-        log.append("shpk %s -> %s" % (self.shpk, shpk))
+        log.append(f"shpk {self.shpk} -> {shpk}")
         self.shpk = shpk
         n = len(self.keys)
         self.keys = [k for k in self.keys if (k[0] & 0xFFFFFFFF) != LEGACY_KEY]
         if len(self.keys) != n:
             log.append("dropped legacy key C8BD1DEF")
         n = len(self.constants)
-        self.constants = [
-            c for c in self.constants if (c[0] & 0xFFFFFFFF) not in LEGACY_CONSTANTS
-        ]
+        self.constants = [c for c in self.constants if (c[0] & 0xFFFFFFFF) not in LEGACY_CONSTANTS]
         if len(self.constants) != n:
             log.append("dropped %d legacy constant(s)" % (n - len(self.constants)))
         return log
@@ -214,7 +206,8 @@ class Mtrl:
 
         Not the default here, because keeping the diffuse preserves appearance exactly and
         `character.shpk` declares `g_SamplerDiffuse` either way. Returns True if it changed
-        anything."""
+        anything.
+        """
         hit = [s for s in self.samplers if (s[0] & 0xFFFFFFFF) == SAMPLER_DIFFUSE]
         if not hit:
             return False
@@ -250,12 +243,11 @@ class Mtrl:
         self.keys = [k for k in self.keys if (k[0] & 0xFFFFFFFF) != DIFFUSE_KEY]
         return True
 
-    def pbr_preset(
-        self, threshold=1.5, roughness=0.5, sheen=(0.2, 0.2, 3.0), metalness=0.0
-    ):
+    def pbr_preset(self, threshold=1.5, roughness=0.5, sheen=(0.2, 0.2, 3.0), metalness=0.0):
         """The artistic half, as Anno's modal values on rows the classifier selects.
 
-        Only touches rows that are non-empty and currently have no roughness or sheen."""
+        Only touches rows that are non-empty and currently have no roughness or sheen.
+        """
         arr = self.rows
         if arr is None:
             return 0
@@ -297,6 +289,6 @@ if __name__ == "__main__":
                 len(m.keys),
                 len(m.constants),
                 len(m.samplers),
-                "OK" if m.build() == open(p, "rb").read() else "DIFFERS",
+                "OK" if m.build() == pathlib.Path(p).read_bytes() else "DIFFERS",
             )
         )

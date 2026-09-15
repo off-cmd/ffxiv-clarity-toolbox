@@ -23,11 +23,11 @@ SLOT_PART = {
 
 class ImcEntry:
     __slots__ = (
-        "material_id",
-        "decal_id",
         "attribute_and_sound",
-        "vfx_id",
+        "decal_id",
         "material_animation_id",
+        "material_id",
+        "vfx_id",
     )
 
     def __init__(self, m, d, a, v, ma):
@@ -69,7 +69,7 @@ class ImcFile:
             self.variants.append(parts)
 
     def entry(self, variant, slot):
-        """variant is 1-based as stored in Item.ModelMain."""
+        """Variant is 1-based as stored in Item.ModelMain."""
         part = SLOT_PART.get(slot, 0)
         if self.part_count == 1:
             part = 0

@@ -7,9 +7,9 @@ Also merges the new mods into the XIVPenumbra layout: `sort_order.json` paths un
 Default collection.
 """
 
-import json
 import os
-from typing import Any, Dict
+
+from ..jsonio import read_json, write_json
 
 # ASCII names only. The em-dash these used to carry (U+2014, bytes E2 80 94) is read by the game's
 # native file loader in the system ANSI codepage, so every redirect came back as
@@ -54,7 +54,7 @@ def mod_for_family(family):
 
 
 def file_rel(tier, game_path):
-    return "files/%s/%s" % (tier, game_path)
+    return f"files/{tier}/{game_path}"
 
 
 def options_for(tiers_files):
@@ -79,9 +79,7 @@ def options_for(tiers_files):
         if not tiers_files.get(tier):
             continue  # nothing reached this tier: the option would duplicate the one below
         merged = {}
-        for lower in TIER_ORDER[
-            : i + 1
-        ]:  # ascending, so a higher tier overwrites a lower one
+        for lower in TIER_ORDER[: i + 1]:  # ascending, so a higher tier overwrites a lower one
             merged.update(tiers_files.get(lower, {}))
         out[tier] = merged
     return out
@@ -116,9 +114,7 @@ def write_mod_json(out, name, tiers_files, version="0.1.0", description=""):
                 "Name": TIER_LABEL[tier],
                 "Description": "%d textures" % len(files),
                 "Priority": 0,
-                "Files": {
-                    gp: rel.replace("/", "\\") for gp, rel in sorted(files.items())
-                },
+                "Files": {gp: rel.replace("/", "\\") for gp, rel in sorted(files.items())},
                 "FileSwaps": {},
                 "Manipulations": [],
             }
@@ -151,12 +147,7 @@ def write_mod_json(out, name, tiers_files, version="0.1.0", description=""):
         "DefaultData": {"Files": {}, "FileSwaps": {}, "Manipulations": []},
         "Groups": groups,
     }
-    json.dump(
-        meta,
-        open(os.path.join(d, "meta.json"), "w", encoding="utf-8"),
-        indent=2,
-        ensure_ascii=False,
-    )
+    write_json(os.path.join(d, "meta.json"), meta)
 
     # Remove old files if they exist
     for old_f in ["default_mod.json", "group_001_tier.json"]:
@@ -170,7 +161,7 @@ def write_mod_json(out, name, tiers_files, version="0.1.0", description=""):
 def pack(manifest, out, log=print):
     """Walk done rows, collect files per mod/tier from what exists on disk, write JSON."""
     per = {}
-    for path, family, part, role, w, h, fmt, mips, status, tiers in manifest.rows(
+    for path, family, _part, _role, _w, _h, _fmt, _mips, _status, tiers in manifest.rows(
         status="done"
     ):
         if path in RESERVED_PATHS:
@@ -204,9 +195,8 @@ def pack(manifest, out, log=print):
                 continue
             if os.path.isfile(os.path.join(out, mod, "group_001_tier.json")):
                 log(
-                    "  NOTE: %s has a package on disk but no finished rows; its old redirections are"
-                    " still live. Delete %s if it is obsolete."
-                    % (mod, os.path.join(out, mod))
+                    f"  NOTE: {mod} has a package on disk but no finished rows; its old redirections are"
+                    f" still live. Delete {os.path.join(out, mod)} if it is obsolete."
                 )
 
     # Zip up written mods into .pmp files
@@ -221,9 +211,7 @@ def pack(manifest, out, log=print):
     return written
 
 
-def merge_penumbra(
-    config_dir, mods_present, default_guid="b615f2fe-afef-4cb7-91d3-4f353501f64c"
-):
+def merge_penumbra(config_dir, mods_present, default_guid="b615f2fe-afef-4cb7-91d3-4f353501f64c"):
     """Add the Clarity mods to sort_order.json (created or merged) and to the Default collection."""
     if os.path.isfile(os.path.join(config_dir, "mod_data.db")):
         raise RuntimeError(
@@ -232,7 +220,7 @@ def merge_penumbra(
     so_path = os.path.join(config_dir, "sort_order.json")
     so = {"Data": {}, "EmptyFolders": [], "LockedPaths": []}
     if os.path.isfile(so_path):
-        so = json.load(open(so_path, encoding="utf-8"))
+        so = read_json(so_path)
     # Migrate the em-dash names: drop their sort entries (the folders are gone) so they do not
     # linger as missing mods.
     for legacy in LEGACY_NAMES:
@@ -240,10 +228,10 @@ def merge_penumbra(
     for mod in mods_present:
         prio = MODS[mod][1]
         so["Data"][mod] = "%s/%03d %s" % (FOLDER, prio, mod)
-    json.dump(so, open(so_path, "w", encoding="utf-8"), indent=4, ensure_ascii=False)
+    write_json(so_path, so, indent=4)
     coll = os.path.join(config_dir, "collections", default_guid + ".json")
     if os.path.isfile(coll):
-        j = json.load(open(coll, encoding="utf-8"))
+        j = read_json(coll)
         # Carry the old entry's enabled/priority over to the new name, then drop the old key.
         for legacy, current in LEGACY_NAMES.items():
             if legacy in j["Settings"]:
@@ -251,7 +239,7 @@ def merge_penumbra(
                 del j["Settings"][legacy]
         for mod in mods_present:
             j["Settings"].setdefault(mod, {"Priority": MODS[mod][1], "Enabled": True})
-        json.dump(j, open(coll, "w", encoding="utf-8"), indent=4, ensure_ascii=False)
+        write_json(coll, j, indent=4)
     return so_path
 
 
@@ -260,7 +248,8 @@ def merge_icon_twins(
 ):
     """twins: {original mod dir name: twin dir name}. The twin goes to
     `9 Interface/Icons - upscaled (G6)/<prio+bump> <name> (upscaled)` and is enabled in the
-    Interface collection at the original's priority + bump, so it wins over the original."""
+    Interface collection at the original's priority + bump, so it wins over the original.
+    """
     if os.path.isfile(os.path.join(config_dir, "mod_data.db")):
         raise RuntimeError(
             "Modern Penumbra uses LiteDB: use the release installer, not legacy pack --penumbra-config"
@@ -268,9 +257,9 @@ def merge_icon_twins(
     so_path = os.path.join(config_dir, "sort_order.json")
     so = {"Data": {}, "EmptyFolders": [], "LockedPaths": []}
     if os.path.isfile(so_path):
-        so = json.load(open(so_path, encoding="utf-8"))
+        so = read_json(so_path)
     coll_p = os.path.join(config_dir, "collections", interface_guid + ".json")
-    coll = json.load(open(coll_p, encoding="utf-8")) if os.path.isfile(coll_p) else None
+    coll = read_json(coll_p) if os.path.isfile(coll_p) else None
     for orig, twin in twins.items():
         prio = 900
         if coll and orig in coll["Settings"]:
@@ -284,9 +273,7 @@ def merge_icon_twins(
             entry = dict(coll["Settings"].get(orig, {}))
             entry.update({"Priority": prio + bump, "Enabled": True})
             coll["Settings"][label] = entry
-    json.dump(so, open(so_path, "w", encoding="utf-8"), indent=4, ensure_ascii=False)
+    write_json(so_path, so, indent=4)
     if coll is not None:
-        json.dump(
-            coll, open(coll_p, "w", encoding="utf-8"), indent=4, ensure_ascii=False
-        )
+        write_json(coll_p, coll, indent=4)
     return so_path

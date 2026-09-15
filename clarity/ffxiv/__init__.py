@@ -33,7 +33,7 @@ __all__ = [
 ]
 
 
-def GameData(path: str) -> sqpack.GameData:  # noqa: N802 - kept for callers that use the old name
+def GameData(path: str) -> sqpack.GameData:  # noqa: N802
     """Open the game's ``sqpack`` directory. Thin alias for :class:`sqpack.GameData`."""
     return sqpack.GameData(path)
 

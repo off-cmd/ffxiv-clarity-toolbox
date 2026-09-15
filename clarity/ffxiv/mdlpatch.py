@@ -74,8 +74,7 @@ class Mdl:
         self._runtime()
         # The one assertion that validates the entire section walk at once.
         assert (
-            HDR_SIZE + self.stack_size + self.runtime_size
-            == self.lods[0]["vertex_data_offset"]
+            HDR_SIZE + self.stack_size + self.runtime_size == self.lods[0]["vertex_data_offset"]
         ), "section walk mismatch: 0x44+%d+%d != %d" % (
             self.stack_size,
             self.runtime_size,
@@ -105,7 +104,7 @@ class Mdl:
     def _runtime(self):
         o = HDR_SIZE + self.stack_size
         self.rt0 = o
-        scount, _pad, ssize = struct.unpack_from("<HHI", self.d, o)
+        _scount, _pad, ssize = struct.unpack_from("<HHI", self.d, o)
         o += 8 + ssize
         mh = struct.unpack_from("<f 9H BB H BB ff HH BBBB H H I 4B", self.d, o)
         self.radius_off = o
@@ -120,8 +119,8 @@ class Mdl:
             shape_count,
             shape_mesh_count,
             shape_value_count,
-            lod_count,
-            flags1,
+            _lod_count,
+            _flags1,
             element_id_count,
             tsm_count,
             flags2,
@@ -129,7 +128,7 @@ class Mdl:
             _sclip,
             _cull,
             tss_count,
-            flags3,
+            _flags3,
             _bgm,
             _bgc,
             neck_morph_count,
@@ -163,7 +162,7 @@ class Mdl:
         # 60, so LOD0's tail reads two fields early and LOD1/2 are pure garbage.
         self.lods = []
         self.lod_off_0 = o  # mdlwrite needs to rewrite these in place
-        for i in range(3):
+        for _i in range(3):
             f = struct.unpack_from("<2H2f8H3IBBH4I", self.d, o)
             assert struct.calcsize("<2H2f8H3IBBH4I") == 60
             self.lods.append(
@@ -183,7 +182,7 @@ class Mdl:
             o += 40 * 3
         self.meshes = []
         self.mesh_off = o
-        for i in range(mesh_count):
+        for _i in range(mesh_count):
             f = struct.unpack_from("<HH I 4H I 3I 4B", self.d, o)
             self.meshes.append(
                 dict(
@@ -224,14 +223,14 @@ class Mdl:
 
     # ---- mesh -> LOD, so the right vertex_data_offset is used
     def lod_of(self, mi):
-        for i, l in enumerate(self.lods):
-            if l["mesh_index"] <= mi < l["mesh_index"] + l["mesh_count"]:
+        for i, lod in enumerate(self.lods):
+            if lod["mesh_index"] <= mi < lod["mesh_index"] + lod["mesh_count"]:
                 return i
             if (
-                l["water_mesh_count"]
-                and l["water_mesh_index"]
+                lod["water_mesh_count"]
+                and lod["water_mesh_index"]
                 <= mi
-                < l["water_mesh_index"] + l["water_mesh_count"]
+                < lod["water_mesh_index"] + lod["water_mesh_count"]
             ):
                 return i
         return 0
@@ -248,12 +247,10 @@ class Mdl:
             return None
         m = self.meshes[mi]
         base = (
-            self.lods[self.lod_of(mi)]["vertex_data_offset"]
-            + m["vbo"][e["stream"]]
-            + e["offset"]
+            self.lods[self.lod_of(mi)]["vertex_data_offset"] + m["vbo"][e["stream"]] + e["offset"]
         )
         stride = m["stride"][e["stream"]]
-        fmt, n, _sz = VT[e["type"]]
+        fmt, _n, _sz = VT[e["type"]]
         if fmt is None:
             raise NotImplementedError("position vertex type %d" % e["type"])
         out = np.empty((m["vertex_count"], 3), np.float64)
@@ -265,9 +262,7 @@ class Mdl:
         e = self._pos_element(mi)
         m = self.meshes[mi]
         base = (
-            self.lods[self.lod_of(mi)]["vertex_data_offset"]
-            + m["vbo"][e["stream"]]
-            + e["offset"]
+            self.lods[self.lod_of(mi)]["vertex_data_offset"] + m["vbo"][e["stream"]] + e["offset"]
         )
         stride = m["stride"][e["stream"]]
         fmt, n, _sz = VT[e["type"]]
@@ -322,9 +317,7 @@ def patch_positions(data, fn, update_bounds=True):
         if p is None or not len(p):
             continue
         q = np.asarray(fn(mi, p), float)
-        assert q.shape == p.shape, (
-            "position count changed — this patcher cannot retopologise"
-        )
+        assert q.shape == p.shape, "position count changed — this patcher cannot retopologise"
         m.set_positions(mi, q)
         n += len(q)
     if update_bounds:

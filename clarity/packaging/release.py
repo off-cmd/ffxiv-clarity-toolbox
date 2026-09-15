@@ -1,6 +1,5 @@
 """Versioned family/profile exports. Working products are never moved or requeued."""
 
-import argparse
 import hashlib
 import json
 import os
@@ -9,7 +8,6 @@ import re
 import shutil
 import sqlite3
 import time
-from typing import Any, Dict, List
 
 from .. import paths
 from ..processing import roles
@@ -69,12 +67,10 @@ def version_key(version):
 def version_for(game, revision, preview=None):
     m = re.fullmatch(r"(\d+)\.(\d{1,2})(?:h(\d+))?", game)
     if not m or revision < 0:
-        raise ValueError(
-            "Expected game patch such as 7.56 or 7.56h1 and nonnegative revision"
-        )
+        raise ValueError("Expected game patch such as 7.56 or 7.56h1 and nonnegative revision")
     if preview is not None and preview < 1:
         raise ValueError("Preview number must be a positive integer")
-    major, minor, hotfix = m.groups()
+    major, minor, _hotfix = m.groups()
     version = f"{int(major)}.{int(minor.ljust(2, '0'))}.{revision}"
     if preview is not None:
         version += f"-preview.{preview}"
@@ -87,9 +83,7 @@ def requested_tier(family, role, path, profile="everyday"):
     # These are the existing classifier's conventional specular suffixes. Exact
     # material exceptions must be recorded separately, not guessed from actor names.
     specular = pathlib.PurePosixPath(path).stem.endswith(("_s", "_spec", "_specular"))
-    if family in ("equipment", "accessory", "weapon") and (
-        role == "normal" or specular
-    ):
+    if family in ("equipment", "accessory", "weapon") and (role == "normal" or specular):
         return "native"
     if family.startswith("bg") and role == "normal":
         return "native"
@@ -130,9 +124,7 @@ def dump(path, data):
 def select_product(row, root, profile):
     target = requested_tier(row["family"], row["role"], row["path"], profile)
     available = set((row["tiers"] or "").split(","))
-    for tier in reversed(
-        ["native", "2x", "4x"][: ["native", "2x", "4x"].index(target) + 1]
-    ):
+    for tier in reversed(["native", "2x", "4x"][: ["native", "2x", "4x"].index(target) + 1]):
         p = root / pack.mod_for_family(row["family"]) / pack.file_rel(tier, row["path"])
         if tier in available and p.is_file():
             return tier, p
@@ -180,9 +172,7 @@ def export(a):
     planned = []
     for gi, (group, families) in enumerate(CATALOG):
         for fi, (family, title) in enumerate(families):
-            eligible = [
-                r for r in rows if r["family"] == family and r["status"] != "skipped"
-            ]
+            eligible = [r for r in rows if r["family"] == family and r["status"] != "skipped"]
             for profile in a.profile:
                 if profile == "4x" and roles.POLICY.get(family, (None, 0))[0] != "4x":
                     continue
@@ -208,9 +198,7 @@ def export(a):
                 label = (
                     "Everyday (Up to 2x)"
                     if profile == "everyday"
-                    else {"native": "Native", "2x": "Up to 2x", "4x": "Up to 4x"}[
-                        profile
-                    ]
+                    else {"native": "Native", "2x": "Up to 2x", "4x": "Up to 4x"}[profile]
                 )
                 ident = f"clarity-{family}-{profile}"
                 entry = {
@@ -225,9 +213,7 @@ def export(a):
                     "missing": missing,
                     "default_enabled": profile == "everyday"
                     and family not in ("monster", "demihuman"),
-                    "path": str(
-                        pathlib.Path("Clarity - " + group) / (title + " - " + profile)
-                    ),
+                    "path": str(pathlib.Path("Clarity - " + group) / (title + " - " + profile)),
                 }
                 report["variants"].append(entry)
                 if products:
@@ -243,8 +229,7 @@ def export(a):
                 {
                     **report,
                     "variants": [
-                        {k: v for k, v in e.items() if k != "missing"}
-                        for e in report["variants"]
+                        {k: v for k, v in e.items() if k != "missing"} for e in report["variants"]
                     ],
                 },
                 indent=2,
@@ -281,9 +266,7 @@ def export(a):
             if row["path"] not in checked:
                 checked[row["path"]] = src_fingerprint(row["path"], gd)
             if not row["srchash"] or checked[row["path"]] != row["srchash"]:
-                stale.append(
-                    {"path": row["path"], "reason": "source-unverified-or-changed"}
-                )
+                stale.append({"path": row["path"], "reason": "source-unverified-or-changed"})
                 continue
             rel = "files/" + row["path"]
             output = folder / rel
@@ -355,9 +338,7 @@ def export(a):
 
 
 def add_parser(sub):
-    p = sub.add_parser(
-        "release", help="Export immutable family/profile releases without inference"
-    )
+    p = sub.add_parser("release", help="Export immutable family/profile releases without inference")
     p.add_argument("--game", required=True)
     p.add_argument("--revision", type=int, required=True)
     p.add_argument("--source", required=True)
@@ -365,9 +346,7 @@ def add_parser(sub):
         "--destination",
         default=str(pathlib.Path(paths.PROJECT) / "build-output/releases"),
     )
-    p.add_argument(
-        "--profile", action="append", choices=["everyday", "native", "2x", "4x"]
-    )
+    p.add_argument("--profile", action="append", choices=["everyday", "native", "2x", "4x"])
     p.add_argument("--dry-run", action="store_true")
     p.add_argument(
         "--preview",

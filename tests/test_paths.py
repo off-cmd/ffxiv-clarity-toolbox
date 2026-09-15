@@ -25,8 +25,8 @@ def test_checkout_resolves_to_the_repository_root(monkeypatch) -> None:
 
 def test_clarity_project_wins(monkeypatch, tmp_path) -> None:
     paths = _reload(monkeypatch, CLARITY_PROJECT=str(tmp_path))
-    assert paths.PROJECT == str(tmp_path)
-    assert paths.DB == os.path.join(str(tmp_path), "build-output", "manifest.sqlite")
+    assert str(tmp_path) == paths.PROJECT
+    assert os.path.join(str(tmp_path), "build-output", "manifest.sqlite") == paths.DB
 
 
 def test_registry_default_is_package_data(monkeypatch) -> None:

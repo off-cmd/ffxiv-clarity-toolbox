@@ -15,8 +15,8 @@ def do_ui(
     engine: "Engine",
     rgba: npt.NDArray[np.uint8],
     scale: int,
-    src_fmt: str | None,
-    family: str,
+    src_fmt: str | None,  # noqa: ARG001 - uniform ROLE_FN signature
+    family: str,  # noqa: ARG001 - uniform ROLE_FN signature
 ) -> npt.NDArray[np.float32]:
     """Upscale UI textures using alpha-premultiplication to avoid dark fringing.
 
@@ -86,10 +86,10 @@ def do_ui_batch(
     ups = engine.run_batch("ui", jobs, scale)
 
     got = {}
-    for (kind, i), u in zip(index, ups):
+    for (kind, i), u in zip(index, ups, strict=True):
         got[(kind, i)] = u
     out = []
-    for i, x in enumerate(xs):
+    for i in range(len(xs)):
         if not alpha[i]:
             rgb = np.clip(got[("rgb", i)], 0, 1)
             out.append(np.dstack([rgb, np.ones_like(rgb[..., :1])]).astype(np.float32))

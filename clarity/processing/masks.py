@@ -16,7 +16,7 @@ def do_mask(
     rgba: npt.NDArray[np.uint8],
     scale: int,
     src_fmt: str | None,
-    family: str,
+    family: str,  # noqa: ARG001 - uniform ROLE_FN signature
 ) -> npt.NDArray[np.float32]:
     """Upscale an FFXIV material mask.
 

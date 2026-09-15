@@ -352,6 +352,7 @@ class Manifest:
 
     def set_status(self, path, status, tiers="", note="", srchash=None, srcver=""):
         """srchash=None leaves whatever hash the row already had; pass a hash when the row is being
+
         marked done so the stamp and the output are written in the same transaction and can never
         disagree about which source the files on disk came from.
         """
@@ -400,6 +401,7 @@ def _header(gd, path):
 
 def _mtrl_textures(gd, mtrl_path):
     """Texture paths named by a material. kbtools' class is Mtrl (an earlier name here, MtrlFile,
+
     raised AttributeError on every call, so the structure walk had never added a texture).
     """
     try:
@@ -601,7 +603,7 @@ def gen_chara(man, gd, log=print):
                             texs.extend(_mtrl_textures(gd, p))
                 _add_paths(man, gd, texs, seen, stats)
         log("%s: %d bodies, %.0fs" % (kind, found, time.time() - t0))
-    # demihuman: obj/equipment/eNNNN
+    # demihuman: obj/equipment/eNNNN  # noqa: ERA001 - a path pattern, not code
     t0, found = time.time(), 0
     for d in range(1, 3000):
         base = "chara/demihuman/d%04d/obj/equipment/" % d

@@ -1,4 +1,5 @@
 """Super-resolution engine: spandrel-loaded ESRGAN-family models on the GPU with tiling, or a
+
 Lanczos fallback (CPU, no torch) so the plumbing runs anywhere.
 
 Model slots → weight files. The tracked mapping is `clarity/models/registry.json` (package
@@ -115,6 +116,7 @@ class Engine:
     # ------------------------------------------------------------------ inference
     def run(self, slot, img, scale):
         """img: float32 (H, W, C) in [0, 1] → float32 (H*scale, W*scale, C). If the slot's model is
+
         missing (or torch is), falls back to Lanczos and records the slot in `self.missing`.
         """
         slot = self.resolve(slot)
@@ -127,6 +129,7 @@ class Engine:
 
     def run_batch(self, slot, imgs, scale):
         """Several same-sized images through one forward pass (the batch dimension never mixes, so
+
         each result equals `run` on that image alone). Falls back per image like `run`.
         """
         if not imgs:

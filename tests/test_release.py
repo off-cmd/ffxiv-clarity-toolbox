@@ -243,9 +243,9 @@ class ReleaseTests(unittest.TestCase):
                 patch("clarity.cli.src_fingerprint", return_value="changed"),
                 patch.object(kb, "game", return_value=fakegame),
                 patch.object(kb.sqpack, "game_version", return_value="build"),
+                self.assertRaises(RuntimeError),
             ):
-                with self.assertRaises(RuntimeError):
-                    release.export(args)
+                release.export(args)
             # A failed export leaves no directory under the final version name, so
             # the same version can be retried once the sources are verified again.
             self.assertFalse((root / "releases/2.51.0").exists())

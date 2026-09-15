@@ -1,4 +1,5 @@
 """A BC7 encoder in numpy: mode 6 (one subset, RGBA 7-bit endpoints + p-bit, 4-bit indices),
+
 with mode 5 (RGB line + separate alpha line) tried per block for the blocks mode 6 fits badly.
 
 Why write one: Pillow only encodes DXT1/3/5 and BC5, and its DXT5 on a 2048² hair normal
@@ -135,7 +136,7 @@ def _mode6(X):
                 better = err < best[0]
                 best = tuple(
                     np.where(better[:, None] if n.ndim == 2 else better, n, o)
-                    for n, o in zip(cand, best)
+                    for n, o in zip(cand, best, strict=True)
                 )
     err, q0, q1, p0, p1, idx = best
     lo = np.full(B, 1 << 6, np.uint64)  # mode 6
@@ -206,6 +207,7 @@ def _mode5(X):
 # ------------------------------------------------------------------ public
 def encode(rgba, modes=(6, 5), chunk=16384):
     """(h, w, 4) uint8 RGBA -> BC7 block bytes (row-major blocks). Chunked: the assignment
+
     step is (blocks, 16, 16, 4) doubles, 4 MB per thousand blocks.
     """
     X, _bh, _bw = _blocks(np.asarray(rgba, np.uint8))
@@ -253,4 +255,4 @@ if __name__ == "__main__":
     img[..., 3] = ((xx + yy) * 2) & 255
     for modes in ((6,), (5,), (6, 5)):
         p, e = roundtrip(img, encode(img, modes))
-        print("modes", modes, "PSNR", p.round(1), "mean|err|", e.round(2))
+        print("modes", modes, "PSNR", p.round(1), "mean|err|", e.round(2))  # noqa: T201 - self-test entry point

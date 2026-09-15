@@ -151,8 +151,9 @@ ignore = [
 "clarity/processing/*.py" = ["N806"]
 "clarity/texio.py" = ["N806", "T20"]  # encoder probe report prints
 "clarity/uldparts.py" = ["N806"]
-"clarity/manifest.py" = ["N806"]
-"clarity/cli.py" = ["T20"]            # the CLI prints
+"clarity/cli.py" = ["T20", "S608"]    # the CLI prints; SQL: user values are bound with ?,
+                                      # only ? placeholders and program constants are formatted in
+"clarity/manifest.py" = ["N806", "S608"]
 "clarity/packaging/*.py" = ["T20"]    # progress lines during pack/release
 "scripts/*.py" = ["T20", "S", "D"]
 "tests/*.py" = ["S", "D", "ARG", "PLC0415", "SLF001"]

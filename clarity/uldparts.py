@@ -41,9 +41,12 @@ somewhere -- the caller passes the stems it knows about, which for `clarity run`
 in the manifest.
 """
 
+import logging
 import re
 
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 # ULD coordinates are in BASE texture space. The shipped `_hr1` sheets are 2x, so every rectangle
 # has to be doubled before it addresses one. Verified on JobHudXBM1_hr1 (KB 05).
@@ -141,7 +144,8 @@ def build_index(gd, stems, log=None, pathlist=None):
             if not gd.exists(path):
                 continue
             u = mod.load(gd, path)
-        except Exception:
+        except Exception as e:
+            log.debug("%s: could not parse (%s); skipped", path, e)
             continue
         loaded += 1
         by_asset = {aid: p.rsplit("/", 1)[-1].lower() for aid, p in u.assets}
@@ -165,14 +169,15 @@ def rects_for(gd, tex_path, width=None, height=None, index=None, extra_ulds=()):
     stem_l = stem.lower()
     found_all = []
     if index is not None:
-        found_all = [(0, 0) + r for r in index.get(stem_l, ())]
+        found_all = [(0, 0, *r) for r in index.get(stem_l, ())]
     sources = () if index is not None else (up,)
     for path in sources + tuple(extra_ulds):
         try:
             if not gd.exists(path):
                 continue
             found_all.extend(mod.load(gd, path).parts_for(stem))
-        except Exception:
+        except Exception as e:
+            log.debug("%s: could not parse (%s); skipped", path, e)
             continue
     out, seen = [], set()
     for _lid, _i, x, y, w, h in found_all:
@@ -272,7 +277,7 @@ def upscale_by_parts(run_batch, rgba, scale, rects, whole=None, pad=PAD):
         groups.setdefault(crop.shape, []).append((r, p, crop))
     done = {}
     for _shape, items in groups.items():
-        for (r, p, _c), up in zip(items, run_batch([c for _r, _p, c in items])):
+        for (r, p, _c), up in zip(items, run_batch([c for _r, _p, c in items]), strict=True):
             done[r] = (p, up)
     for x, y, w, h in sorted(rects, key=lambda r: -(r[2] * r[3])):
         p, up = done[(x, y, w, h)]

@@ -33,7 +33,7 @@ __all__ = [
 ]
 
 
-def GameData(path: str) -> sqpack.GameData:  # noqa: N802
+def GameData(path: str) -> sqpack.GameData:  # noqa: N802 - kept for callers that use the old name
     """Open the game's ``sqpack`` directory. Thin alias for :class:`sqpack.GameData`."""
     return sqpack.GameData(path)
 
@@ -49,7 +49,7 @@ def game(path: str | None = None) -> sqpack.GameData:
             searches the usual install locations and the ``FFXIV_SQPACK`` /
             ``FFXIV_PATH`` environment variables.
     """
-    global _GD
+    global _GD  # noqa: PLW0603 - the one process-wide game handle
     if _GD is None:
         _GD = sqpack.GameData(sqpack.find_game(path))
     return _GD

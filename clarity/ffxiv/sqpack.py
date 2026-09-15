@@ -209,7 +209,7 @@ def close_dats():
 def read_file(dat_path, offset):
     f = _dat(dat_path)
     f.seek(offset)
-    hsize, ftype, raw_size = struct.unpack("<3I", f.read(12))
+    hsize, ftype, _raw_size = struct.unpack("<3I", f.read(12))
     f.seek(offset)
     head = f.read(hsize)
     out = io.BytesIO()
@@ -235,19 +235,19 @@ def read_file(dat_path, offset):
                 run += sub[si]
                 si += 1
     elif ftype == FT_MODEL:
-        return _read_model(f, offset, head, raw_size)
+        return _read_model(f, offset, head)
     else:
         raise ValueError(f"unsupported/empty file type {ftype}")
     return out.getvalue()
 
 
-def _read_model(f, offset, head, raw_size):
-    (_size, _ftype, _rawsz, _nblocks, _used, version, stack_size, runtime_size) = (
+def _read_model(f, offset, head):
+    (_size, _ftype, _rawsz, _nblocks, _used, version, _stack_size, _runtime_size) = (
         struct.unpack_from("<8I", head, 0)
     )
-    vbuf = struct.unpack_from("<3I", head, 0x20)
-    egeo = struct.unpack_from("<3I", head, 0x2C)
-    ibuf = struct.unpack_from("<3I", head, 0x38)
+    struct.unpack_from("<3I", head, 0x20)
+    struct.unpack_from("<3I", head, 0x2C)
+    struct.unpack_from("<3I", head, 0x38)
     _c_stack, _c_runtime = struct.unpack_from("<2I", head, 0x44)
     off = 0x70
     stack_off, runtime_off = struct.unpack_from("<2I", head, off)
@@ -300,8 +300,6 @@ def _read_model(f, offset, head, raw_size):
         ib_off,
         ib_i,
         ib_n,
-        stack_size,
-        runtime_size,
     )
 
 
@@ -335,8 +333,6 @@ def _rebuild_model(
     ib_off,
     ib_i,
     ib_n,
-    declared_stack=0,
-    declared_runtime=0,
 ):
     """Reassemble a `.mdl` exactly as a mod tool would write it.
 
@@ -403,7 +399,7 @@ def _ok(p):
 
 
 def find_game(root: str | None = None) -> str:
-    """Locate the game's `sqpack` directory.
+    r"""Locate the game's `sqpack` directory.
 
     Set **FFXIV_SQPACK** to skip the search entirely:
 
@@ -536,6 +532,7 @@ def entry_fingerprint(dat_path, offset, digest_size=16):
 
 def read_tex_header(dat_path, offset, nbytes=80):
     """Fast path: a texture-type dat entry stores the raw .tex header uncompressed
+
     immediately after the entry header, so we can read it without inflating mips.
     """
     f = _dat(dat_path)

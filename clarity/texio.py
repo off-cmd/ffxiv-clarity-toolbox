@@ -211,7 +211,9 @@ def _texconv(rgba, fmt_name, mips, want_text=False):
             if fmt_name == "BC7_UNORM":
                 cmd += ["-bc", "x"]  # 3-subset modes too: free on the GPU codec
             cmd.append(src)
-            r = subprocess.run(cmd, capture_output=True, text=True, creationflags=flags)
+            r = subprocess.run(
+                cmd, capture_output=True, text=True, creationflags=flags, check=False
+            )
             if r.returncode == 0:
                 out = pathlib.Path(td, "in.dds").read_bytes()
                 return (out, r.stdout + r.stderr) if want_text else out
@@ -256,6 +258,7 @@ def encode(rgba, fmt=BC7, mips=None, attributes=None):
 
 def float_chain(rgba_u8, n):
     """Box-filtered mip chain computed in float from the top level and rounded once per level —
+
     what texconv does internally, and what the old per-tier numpy path did — so the same pixels
     come out whichever encoder runs. -> list of uint8 RGBA levels, largest first.
     """
@@ -296,6 +299,7 @@ def _bgra_tex(levels_bytes, w, h, attributes):
 
 def encode_tiers(rgba_top, fmt=BC7, attributes=None, offsets=(0,), keep_mips=True):
     """Encode the top-tier image ONCE with its full mip chain, then cut one .tex per requested tier:
+
     tier at offset k = mip levels k.. of that chain (dims >> k). Mip k of a box-filtered chain is
     exactly the 2×2 average the numpy path computed, so the tiers are the same pixels as before,
     encoded once instead of once per tier. `keep_mips=False` writes a single level per tier (for

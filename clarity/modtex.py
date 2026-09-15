@@ -1,4 +1,5 @@
 """Upscale the textures *inside an existing Penumbra mod* (the icon packs, G6): the mod folder is
+
 mirrored to `<out>/<dir name> (upscaled)`, every JSON copied unchanged, every `.tex` replaced by
 its upscaled twin at the same relative path. Duplicate files (same bytes — Color Gearset ships
 each icon twice, Simpler Buff Icons reuses 8 designs across 96 ids) are processed once.
@@ -16,6 +17,7 @@ lookup rather than after, so it is recorded here rather than papered over.
 """
 
 import hashlib
+import logging
 import os
 import pathlib
 import shutil
@@ -25,9 +27,11 @@ from . import texio
 from .jsonio import read_json, write_json
 from .processing import roles
 
+log = logging.getLogger(__name__)
+
 
 def contained(base, rel):
-    """Is `base/rel` still inside `base`? Mod JSON is somebody else's file, so this is checked.
+    r"""Is `base/rel` still inside `base`? Mod JSON is somebody else's file, so this is checked.
 
     The Files map of a Penumbra mod is third-party data that arrives with the mod, and every value
     in it is used twice here: once to READ from the mod folder and once to WRITE the upscaled twin.
@@ -56,7 +60,8 @@ def mod_files(mod_dir, log=None):
             continue
         try:
             j = read_json(os.path.join(mod_dir, name))
-        except Exception:
+        except (OSError, ValueError) as e:
+            log.debug("%s: not a readable JSON file (%s); skipped", name, e)
             continue
         blocks = [j] if "Files" in j else []
         for o in j.get("Options", []):

@@ -200,6 +200,7 @@ class Mtrl:
 
     def drop_diffuse(self, style="remove"):
         """Anno's own choice on every conversion measured: unbind `g_SamplerDiffuse`, drop the
+
         `B616DC5A` key, and remove the `_d` texture entry entirely, letting colour come from the
         colour table instead of a diffuse map. Sampler texture indices above the removed slot are
         renumbered.
@@ -279,7 +280,7 @@ def read(path):
 if __name__ == "__main__":
     for p in sys.argv[1:]:
         m = read(p)
-        print(
+        print(  # noqa: T201 - self-test entry point
             "%-52s %s  ds=%d tex=%d keys=%d cons=%d samp=%d  roundtrip=%s"
             % (
                 p[-52:],

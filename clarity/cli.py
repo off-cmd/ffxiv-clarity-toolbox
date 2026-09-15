@@ -82,8 +82,8 @@ def cmd_estimate(a):
             )
         )
         tot["src"] += b or 0
-        for k in est:
-            tot[k] += est[k]
+        for k, v in est.items():
+            tot[k] += v
     print(
         "TOTAL src {:.1f} GB -> native {:.1f} GB, 2x {:.1f} GB, 4x {:.1f} GB (each tier is a full separate set)".format(
             tot["src"] / 1e9, tot["native"] / 1e9, tot["2x"] / 1e9, tot["4x"] / 1e9
@@ -91,7 +91,7 @@ def cmd_estimate(a):
     )
 
 
-def check_encoder(a):
+def check_encoder(a):  # noqa: ARG001 - same shape as every cmd_* handler
     """Refuse to burn days on a CPU BC7 codec: probe texconv once and report what it uses."""
     if not texio.use_texconv():
         print("encoder: numpy bc7enc (slow; fine for tests only)")
@@ -123,6 +123,7 @@ def check_encoder(a):
 
 def estimate_output_bytes(man, families, top_override=None, since=None, status="planned"):
     """Bytes the queued rows will WRITE, per tier. Same arithmetic as `estimate`, restricted to the
+
     families this run will actually walk.
     """
     tot = {"native": 0.0, "2x": 0.0, "4x": 0.0}
@@ -132,6 +133,11 @@ def estimate_output_bytes(man, families, top_override=None, since=None, status="
     if families:
         q += " AND family IN ({})".format(",".join("?" * len(families)))
         args += list(families)
+    if since:
+        # The same patch-delta clause Manifest.rows(since=) applies, so the estimate counts
+        # the rows a `--since` run will walk rather than everything still planned.
+        q += " AND (updated >= ? OR note LIKE 'changed at %')"
+        args.append(since)
     for fam, w, h, fmt in man.db.execute(q, args):
         top = roles.top_tier(fam, w, h, top_override)
         if top is None:
@@ -167,7 +173,7 @@ def check_disk(a, man, families):
     except OSError as e:
         print(f"disk: could not measure free space at {a.out} ({e})")
         return True
-    n, tot = estimate_output_bytes(man, families, a.top)
+    n, tot = estimate_output_bytes(man, families, a.top, since=getattr(a, "since", None))
     want = sum(tot[t] for t in tot if not a.tiers or t in a.tiers)
     free = usage.free
     print(
@@ -357,6 +363,7 @@ def cmd_run(a):
 
         def run_group(group, role):
             """One model call per stage for a run of same-sized UI textures (see roles.do_ui_batch).
+
             Decode failures drop out of the group and are recorded individually, so one bad file
             cannot take the batch with it.
             """
@@ -380,7 +387,7 @@ def cmd_run(a):
             imgs = roles.process_top_batch(engine, role, None, [r[7] for r in ready], ready[0][2])
             t2 = time.time()
             per = (t2 - t1) / len(ready)
-            for (path, mod, top, w, h, fmt, hdr, _), img in zip(ready, imgs):
+            for (path, mod, top, w, h, fmt, hdr, _), img in zip(ready, imgs, strict=True):
                 fmt_out = texio.out_format(hdr.format_name, role)
                 fut = pool.submit(
                     encode_job,
@@ -505,7 +512,9 @@ def cmd_run(a):
                                 uld_stats["sheets"] += 1
                                 uld_stats["parts"] += len(rects)
                                 img = uldparts.upscale_by_parts(
-                                    lambda cs: roles.process_top_batch(engine, role_, fam, cs, top),
+                                    lambda cs, r=role_, f=fam, t=top: roles.process_top_batch(
+                                        engine, r, f, cs, t
+                                    ),
                                     rgba,
                                     roles.TIER_SCALE[top],
                                     rects,
@@ -942,7 +951,7 @@ def cmd_fingerprint(a):
         return 0
 
     t0 = time.time()
-    changed, gone, unstamped, ok = [], [], 0, 0
+    changed, gone, _unstamped, ok = [], [], 0, 0
     writes = []
     for i, (path, old, oldver, family, _status) in enumerate(rows):
         h = src_fingerprint(path, gd)
@@ -982,7 +991,7 @@ def cmd_fingerprint(a):
         print("\n  unchanged %d, CHANGED %d, gone %d" % (ok, len(changed), len(gone)))
         if changed:
             byfam = {}
-            for p, fam, o, n, ov in changed:
+            for _p, fam, _o, _n, _ov in changed:
                 byfam[fam] = byfam.get(fam, 0) + 1
             print("\n  changed by family:")
             for fam, n in sorted(byfam.items(), key=lambda x: -x[1]):
@@ -1057,7 +1066,10 @@ def _fmt_eta(s):
 def cmd_audit(a):
     """Report the classes of texture that the pipeline treats specially, or cannot treat at all."""
     man = mf.Manifest(a.db)
-    q = lambda s, *p: man.db.execute(s, p).fetchall()
+
+    def q(s, *p):
+        return man.db.execute(s, p).fetchall()
+
     print("status:", dict(q("SELECT status, COUNT(*) FROM tex GROUP BY status")))
     roles_in = ",".join(f"'{r}'" for r in mf.PROCESSED_ROLES)
 
@@ -1292,7 +1304,7 @@ def main(argv=None):
         "where",
         help="print the resolved layout (database, models, texconv, KB tools, path list)",
     )
-    p.set_defaults(fn=lambda a: print(paths.describe()) or 0)
+    p.set_defaults(fn=lambda _a: print(paths.describe()) or 0)
     p = sub.add_parser("modup", help="upscale the textures inside existing mods (icon packs)")
     p.add_argument("--mod", action="append", required=True)
     p.add_argument("--out", default=OUT_DEFAULT)

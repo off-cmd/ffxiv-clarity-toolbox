@@ -93,6 +93,7 @@ def mip_chain(rgba, mips):
 
 def write_blocks(fmt, levels_blocks, w, h, attributes=ATTR_2D):
     """A block-compressed .tex: `levels_blocks` are the encoded bytes of each mip, largest
+
     first, each ceil(w/4)*ceil(h/4)*block_bytes long for its own dimensions.
     """
     d = bytearray(HDR)
@@ -119,6 +120,7 @@ def write_blocks(fmt, levels_blocks, w, h, attributes=ATTR_2D):
 
 def write_bc7(rgba, mips=None, attributes=ATTR_2D, modes=(6, 5)):
     """RGBA (h, w, 4) -> BC7 .tex with a full mip chain (tools/bc7enc). `modes=(6,)` is about
+
     twice as fast and only loses a little on blocks whose alpha varies sharply.
     """
     from . import bc7enc

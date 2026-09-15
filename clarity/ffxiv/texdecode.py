@@ -15,7 +15,7 @@ except Exception:
     _t2d = None
 
 
-def _bc1_blocks(data, w, h, alpha=False, four_colour=False):
+def _bc1_blocks(data, w, h, four_colour=False):
     """Decode 8-byte BC1 colour blocks.
 
     `four_colour` forces the 4-colour palette regardless of the c0 > c1 test. BC2 and BC3 embed a
@@ -36,11 +36,11 @@ def _bc1_blocks(data, w, h, alpha=False, four_colour=False):
 
     p0, p1 = unpack565(c0), unpack565(c1)
     wide = np.ones_like(c0, dtype=bool) if four_colour else (c0 > c1)
-    pal = np.zeros(p0.shape[:2] + (4, 3), np.float32)
+    pal = np.zeros((*p0.shape[:2], 4, 3), np.float32)
     pal[..., 0, :], pal[..., 1, :] = p0, p1
     pal[..., 2, :] = np.where(wide[..., None], (2 * p0 + p1) / 3, (p0 + p1) / 2)
     pal[..., 3, :] = np.where(wide[..., None], (p0 + 2 * p1) / 3, 0)
-    a = np.ones(p0.shape[:2] + (4,), np.float32) * 255
+    a = np.ones((*p0.shape[:2], 4), np.float32) * 255
     a[..., 3] = np.where(wide, 255, 0)
     out = np.zeros((bh * 4, bw * 4, 4), np.uint8)
     for py in range(4):
@@ -62,7 +62,7 @@ def _bc_alpha_plane(data, w, h, stride, off):
     bits = np.zeros(raw.shape[:2], np.uint64)
     for i in range(6):
         bits |= raw[..., 2 + i].astype(np.uint64) << np.uint64(8 * i)
-    pal = np.zeros(raw.shape[:2] + (8,), np.float32)
+    pal = np.zeros((*raw.shape[:2], 8), np.float32)
     pal[..., 0], pal[..., 1] = a0, a1
     gt = a0 > a1
     for i in range(1, 7):

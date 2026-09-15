@@ -38,3 +38,4 @@ rewrite.sh
 rewrite.ps1
 rewrite.py
 
+.coverage

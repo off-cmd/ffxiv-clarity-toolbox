@@ -264,103 +264,161 @@ def cmd_run(a):
             pathlist=paths.newest_pathlist(),
             log=lambda m: print("  " + m, flush=True),
         )
-    # The encode (texconv subprocess + file writes) of texture N overlaps the model pass of N+1:
-    # one worker, a queue of two, results reaped in order so the manifest only ever marks a
-    # texture done after every tier of it is on disk.
+    # The encode (texconv subprocess + file writes) overlaps the model pass of the textures that
+    # follow. Textures come off the model into `staging`; a full batch goes to a worker as ONE
+    # encode job; results are reaped in order, so the manifest only ever marks a texture done after
+    # every tier of it is on disk. The batch is the point: a texconv call is ~0.3 s of fixed cost
+    # (process, D3D11 device, shader compile) and this queue is mostly textures whose actual encode
+    # is a small fraction of that -- see texio._texconv_many and scripts/bench_texconv.py.
     from concurrent.futures import ThreadPoolExecutor
 
-    pool = ThreadPoolExecutor(max_workers=1)
-    pending = []
+    workers = max(1, a.encode_workers)
+    pool = ThreadPoolExecutor(max_workers=workers)
+    cap_n, cap_bytes = max(1, a.encode_batch), max(1, a.encode_mb) * 1024 * 1024
+    staging = []  # [(path, job, info, t1, t2, srch)] -- through the model, not yet submitted
+    inflight = []  # [(future, [(path, info, t1, t2, srch), ...])] -- submitted, in order
 
-    def encode_job(path, mod, top, img, fmt_out, attr, keep_mips):
-        # Timed HERE, not at reap. The old figure was `time.time() - t2` read when the row was
-        # reaped, and reap is deliberately one texture behind so the encode of N overlaps the model
-        # of N+1 -- so it reported the NEXT texture's model time. The log showed it plainly: every
-        # "encode" equalled the "model" on the line below it (11.0/10.9, 39.8/39.8, 26.2/26.2,
-        # 84.9/84.9). The overlap is the point of the pipeline; the number just has to describe the
-        # thing it names.
+    def encode_batch(jobs):
+        """Encode one batch of textures and write their tiers.
+
+        jobs: [(path, mod, top, img, fmt_out, attr, keep_mips)] -> one entry per job, in order:
+        (tiers written, encode seconds per texture, batch size), or the exception for that job.
+        """
+        # Timed HERE, in the worker, not at reap. Reap is deliberately behind so the encode of one
+        # batch overlaps the model pass of the next, and a figure read at reap time would describe
+        # the model, not the encode. The number has to describe the thing it names.
         t_enc = time.time()
-        offsets = {
-            tier: k
-            for k, tier in enumerate(roles.tiers_below(top))
-            if a.profile == "legacy" or tier == top
-        }
-        want = [k for tier, k in offsets.items() if not a.tiers or tier in a.tiers]
-        texs = texio.encode_tiers(img, fmt_out, attr, offsets=want, keep_mips=keep_mips)
-        wrote = []
-        for tier, k in offsets.items():
-            if k not in texs:
+        items, plans = [], []
+        for path, mod, top, img, fmt_out, attr, keep_mips in jobs:
+            offsets = {
+                tier: k
+                for k, tier in enumerate(roles.tiers_below(top))
+                if a.profile == "legacy" or tier == top
+            }
+            want = [k for tier, k in offsets.items() if not a.tiers or tier in a.tiers]
+            items.append((img, fmt_out, attr, want, keep_mips))
+            plans.append((path, mod, offsets))
+        texs = texio.encode_tiers_many(items)
+        written = []
+        for (path, mod, offsets), tex in zip(plans, texs, strict=True):
+            if isinstance(tex, Exception):
+                written.append(tex)
                 continue
-            dst = os.path.join(a.out, mod, packer.file_rel(tier, path))
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            pathlib.Path(dst).write_bytes(texs[k])
-            wrote.append(tier)
-        return wrote, time.time() - t_enc
+            try:
+                wrote = []
+                for tier, k in offsets.items():
+                    if k not in tex:
+                        continue
+                    dst = os.path.join(a.out, mod, packer.file_rel(tier, path))
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    pathlib.Path(dst).write_bytes(tex[k])
+                    wrote.append(tier)
+                written.append(wrote)
+            except Exception as e:
+                written.append(e)
+        per = (time.time() - t_enc) / len(jobs)
+        return [w if isinstance(w, Exception) else (w, per, len(jobs)) for w in written]
+
+    def flush():
+        """Hand everything in staging to a worker as one batch."""
+        if not staging:
+            return
+        jobs = [job for _, job, *_ in staging]
+        meta = [(path, info, t1, t2, srch) for path, _, info, t1, t2, srch in staging]
+        inflight.append((pool.submit(encode_batch, jobs), meta))
+        staging.clear()
+
+    def submit(path, job, info, t1, t2, srch):
+        """A texture is through the model: stage it, flush when the batch is full, reap."""
+        staging.append((path, job, info, t1, t2, srch))
+        # Capped by bytes as well as by count. The image is the UPSCALED one: a 4x pass over a
+        # 2048 source is 256 MiB, and it is written to scratch uncompressed for texconv, so the
+        # cap bounds both RAM and scratch. Icons batch by the dozen; the big ones go alone, where
+        # the fixed cost was never the problem.
+        if len(staging) >= cap_n or sum(j[3].nbytes for _, j, *_ in staging) >= cap_bytes:
+            flush()
+        reap()
+
+    def finish(path, info, t1, t2, srch, res):
+        """Record one texture's outcome in the manifest."""
+        if not isinstance(res, Exception):
+            wrote, enc_s, nb = res
+            note = "models:" + engine.describe()
+            if engine.missing:
+                note += " fallback:" + ",".join(sorted(engine.missing))
+            # The source hash is written in the same statement that marks the row done, so the
+            # stamp always describes the bytes these files were actually made from. Stamping
+            # separately afterwards would leave a window where a row claims done with no hash
+            # (or worse, a hash taken after a patch landed mid-run).
+            man.set_status(
+                path,
+                "done",
+                tiers=",".join(wrote),
+                note=note[:400],
+                srchash=srch or "",
+                srcver=gamever if srch else "",
+            )
+            man.db.execute(
+                "UPDATE tex SET recipe=? WHERE path=?",
+                (
+                    "profile="
+                    + a.profile
+                    + ";policy="
+                    + release.POLICY_VERSION
+                    + ";models="
+                    + engine.describe(),
+                    path,
+                ),
+            )
+            counts["done"] += 1
+            if a.verbose or counts["done"] <= 5:
+                batch = f" (batch of {nb})" if nb > 1 else ""
+                print(f"  {info}  model {t2 - t1:.1f}s  encode {enc_s:.1f}s{batch}")
+        elif interrupted:
+            # NOT A FAILURE. On Windows a Ctrl+C goes to the whole process GROUP, so the texconv
+            # child that happened to be encoding when the key was pressed is killed too and
+            # returns non-zero. Recording that as 'failed' contradicts this function's own
+            # contract -- an interrupted texture is supposed to stay 'planned' and simply be
+            # redone -- and it is worse than cosmetic: 'failed' rows are not 'planned' rows, so
+            # the texture silently never comes back unless somebody thinks to run
+            # `requeue --failed`. Exactly one row per run, one per Ctrl+C, which is precisely how
+            # three of them accumulated.
+            man.set_status(path, "planned", note="interrupted mid-encode; will be redone")
+            print(
+                "  (interrupted during {} -- left planned, not failed)".format(
+                    path.rsplit("/", 1)[-1]
+                )
+            )
+        else:
+            counts["failed"] += 1
+            man.set_status(path, "failed", note=str(res)[:400])
+            if a.verbose:
+                traceback.print_exception(res)
+        man.commit()
+        n = counts["done"] + counts["failed"]
+        if n % 25 == 0:
+            el = time.time() - t0
+            print(
+                "  %d done, %d failed, %.0fs (%.1f s/texture)"
+                % (counts["done"], counts["failed"], el, el / n)
+            )
 
     def reap(all_of_them=False):
-        while pending and (all_of_them or len(pending) > 1):
-            path, fut, info, t1, t2, srch = pending.pop(0)
+        # As many batches stay in flight as there are workers; the oldest beyond that is waited
+        # for. With one worker that is: the batch being encoded, while the next one fills.
+        while inflight and (all_of_them or len(inflight) > workers):
+            fut, meta = inflight.pop(0)
             try:
-                wrote, enc_s = fut.result()
-                note = "models:" + engine.describe()
-                if engine.missing:
-                    note += " fallback:" + ",".join(sorted(engine.missing))
-                # The source hash is written in the same statement that marks the row done, so the
-                # stamp always describes the bytes these files were actually made from. Stamping
-                # separately afterwards would leave a window where a row claims done with no hash
-                # (or worse, a hash taken after a patch landed mid-run).
-                man.set_status(
-                    path,
-                    "done",
-                    tiers=",".join(wrote),
-                    note=note[:400],
-                    srchash=srch or "",
-                    srcver=gamever if srch else "",
-                )
-                man.db.execute(
-                    "UPDATE tex SET recipe=? WHERE path=?",
-                    (
-                        "profile="
-                        + a.profile
-                        + ";policy="
-                        + release.POLICY_VERSION
-                        + ";models="
-                        + engine.describe(),
-                        path,
-                    ),
-                )
-                counts["done"] += 1
-                if a.verbose or counts["done"] <= 5:
-                    print(f"  {info}  model {t2 - t1:.1f}s  encode {enc_s:.1f}s")
+                results = fut.result()
             except Exception as e:
-                if interrupted:
-                    # NOT A FAILURE. On Windows a Ctrl+C goes to the whole process GROUP, so the
-                    # texconv child that happened to be encoding when the key was pressed is killed
-                    # too and returns non-zero. Recording that as 'failed' contradicts this
-                    # function's own contract two comments below -- an interrupted texture is
-                    # supposed to stay 'planned' and simply be redone -- and it is worse than
-                    # cosmetic: 'failed' rows are not 'planned' rows, so the texture silently never
-                    # comes back unless somebody thinks to run `requeue --failed`. Exactly one row
-                    # per run, one per Ctrl+C, which is precisely how the three of them accumulated.
-                    man.set_status(path, "planned", note="interrupted mid-encode; will be redone")
-                    print(
-                        "  (interrupted during {} -- left planned, not failed)".format(
-                            path.rsplit("/", 1)[-1]
-                        )
-                    )
-                else:
-                    counts["failed"] += 1
-                    man.set_status(path, "failed", note=str(e)[:400])
-                    if a.verbose:
-                        traceback.print_exc()
-            man.commit()
-            n = counts["done"] + counts["failed"]
-            if n % 25 == 0:
-                el = time.time() - t0
-                print(
-                    "  %d done, %d failed, %.0fs (%.1f s/texture)"
-                    % (counts["done"], counts["failed"], el, el / n)
-                )
+                results = [e] * len(meta)
+            for (path, info, t1, t2, srch), res in zip(meta, results, strict=True):
+                finish(path, info, t1, t2, srch, res)
+
+    def drain():
+        """Everything through the model is encoded and recorded before this returns."""
+        flush()
+        reap(True)
 
     # Ctrl+C is a normal way to stop a run that will take days, so it exits the way --budget does:
     # whatever is already through the model is finished and committed, and nothing half-written is
@@ -396,28 +454,15 @@ def cmd_run(a):
             per = (t2 - t1) / len(ready)
             for (path, mod, top, w, h, fmt, hdr, _), img in zip(ready, imgs, strict=True):
                 fmt_out = texio.out_format(hdr.format_name, role)
-                fut = pool.submit(
-                    encode_job,
+                submit(
                     path,
-                    mod,
-                    top,
-                    img,
-                    fmt_out,
-                    hdr.attributes,
-                    hdr.mip_count > 1,
+                    (path, mod, top, img, fmt_out, hdr.attributes, hdr.mip_count > 1),
+                    "%s %dx%d %s -> %s (model batch of %d)"
+                    % (path.rsplit("/", 1)[-1], w, h, fmt, top, len(ready)),
+                    t2 - per,
+                    t2,
+                    src_fingerprint(path),
                 )
-                pending.append(
-                    (
-                        path,
-                        fut,
-                        "%s %dx%d %s -> %s (batch of %d)"
-                        % (path.rsplit("/", 1)[-1], w, h, fmt, top, len(ready)),
-                        t2 - per,
-                        t2,
-                        src_fingerprint(path),
-                    )
-                )
-                reap()
 
         for family in families:
             print(f"\n>>> Starting family: {family}", flush=True)
@@ -477,7 +522,7 @@ def cmd_run(a):
                             run_group(items[s : s + n], role)
                         if a.budget and time.time() - t0 > a.budget:
                             break
-                    reap(True)
+                    drain()
                     man.commit()
                     if a.budget and time.time() - t0 > a.budget:
                         print(
@@ -488,7 +533,7 @@ def cmd_run(a):
                     continue
                 for path, fam, _part, role_, w, h, fmt, _mips, _status, _tiers in rows:
                     if a.budget and time.time() - t0 > a.budget:
-                        reap(True)
+                        drain()
                         print(
                             "budget reached: %d done, %d failed — rerun to resume"
                             % (counts["done"], counts["failed"])
@@ -529,25 +574,13 @@ def cmd_run(a):
                                 )
                         t2 = time.time()
                         fmt_out = texio.out_format(hdr.format_name, role_)
-                        fut = pool.submit(
-                            encode_job,
+                        submit(
                             path,
-                            mod,
-                            top,
-                            img,
-                            fmt_out,
-                            hdr.attributes,
-                            hdr.mip_count > 1,
-                        )
-                        pending.append(
-                            (
-                                path,
-                                fut,
-                                "%s %dx%d %s -> %s" % (path.rsplit("/", 1)[-1], w, h, fmt, top),
-                                t1,
-                                t2,
-                                src_fingerprint(path),
-                            )
+                            (path, mod, top, img, fmt_out, hdr.attributes, hdr.mip_count > 1),
+                            "%s %dx%d %s -> %s" % (path.rsplit("/", 1)[-1], w, h, fmt, top),
+                            t1,
+                            t2,
+                            src_fingerprint(path),
                         )
                     except Exception as e:
                         counts["failed"] += 1
@@ -555,15 +588,14 @@ def cmd_run(a):
                         man.commit()
                         if a.verbose:
                             traceback.print_exc()
-                    reap()
-            reap(True)
+            drain()
             man.commit()
-        reap(True)
+        drain()
     except KeyboardInterrupt:
         interrupted = True
         print("\ninterrupted — finishing the textures already through the model...")
         try:
-            reap(True)
+            drain()
         except KeyboardInterrupt:
             print("  (second Ctrl+C: dropping the queue; those textures stay planned)")
         man.commit()
@@ -1225,6 +1257,28 @@ def main(argv=None):
         type=int,
         default=32,
         help="same-sized icon/UI textures per model batch (1 disables batching)",
+    )
+    # One texconv invocation per batch of finished textures rather than one per texture. Measured
+    # on the 4070 SUPER (scripts/bench_texconv.py): a 512x512 BC7 is 0.32 s alone and 0.06 s each
+    # in a call of 64, and the curve is flat past 32. The byte cap keeps a batch of 4x outputs
+    # from holding gigabytes in RAM and scratch: big textures go alone, small ones by the dozen.
+    p.add_argument(
+        "--encode-batch",
+        type=int,
+        default=32,
+        help="textures per texconv invocation (1 disables encode batching)",
+    )
+    p.add_argument(
+        "--encode-mb",
+        type=int,
+        default=256,
+        help="upper bound in MiB of upscaled pixels per encode batch",
+    )
+    p.add_argument(
+        "--encode-workers",
+        type=int,
+        default=1,
+        help="encode batches in flight at once (each is its own texconv process)",
     )
     p.set_defaults(fn=cmd_run)
     # pack, qa and modup write to (or read from) the same mod root as run; one default for all of them.

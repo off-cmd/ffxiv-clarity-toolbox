@@ -153,6 +153,26 @@ def _dds_split(dds, block_bytes, w, h, mips):
 TEXCONV_TRIES = 2
 
 
+def _texconv_cmd(fmt_name, mips, out_dir):
+    """The texconv command line up to (not including) the input files."""
+    cmd = [
+        TEXCONV,
+        "-nologo",
+        "-y",
+        "-f",
+        fmt_name,
+        "-m",
+        str(mips),
+        "-o",
+        out_dir,
+        "-gpu",
+        TEXCONV_GPU,
+    ]
+    if fmt_name == "BC7_UNORM":
+        cmd += ["-bc", "x"]  # 3-subset modes too: free on the GPU codec
+    return cmd
+
+
 def _texconv(rgba, fmt_name, mips, want_text=False):
     """Encode through texconv, out of reach of the operator's Ctrl+C, reporting the END of a failure.
 
@@ -200,22 +220,7 @@ def _texconv(rgba, fmt_name, mips, want_text=False):
         with tempfile.TemporaryDirectory(dir=paths.SCRATCH) as td:
             src = os.path.join(td, "in.dds")
             pathlib.Path(src).write_bytes(_dds_rgba(rgba))
-            cmd = [
-                TEXCONV,
-                "-nologo",
-                "-y",
-                "-f",
-                fmt_name,
-                "-m",
-                str(mips),
-                "-o",
-                td,
-                "-gpu",
-                TEXCONV_GPU,
-            ]
-            if fmt_name == "BC7_UNORM":
-                cmd += ["-bc", "x"]  # 3-subset modes too: free on the GPU codec
-            cmd.append(src)
+            cmd = [*_texconv_cmd(fmt_name, mips, td), src]
             r = subprocess.run(
                 cmd, capture_output=True, text=True, creationflags=flags, check=False
             )
@@ -225,6 +230,55 @@ def _texconv(rgba, fmt_name, mips, want_text=False):
             text = " ".join((r.stdout or "").split()) + " | " + " ".join((r.stderr or "").split())
             last = "rc=%d ...%s" % (r.returncode, text[-300:])
     raise RuntimeError("texconv failed after %d tries: %s" % (TEXCONV_TRIES, last))
+
+
+def _texconv_many(rgbas, fmt_name, mips):
+    """Several images through ONE texconv invocation.
+
+    -> list of DDS bytes, or an exception in the slot of any image that could not be encoded
+    (the others are unaffected).
+
+    Almost all of a texconv call is fixed cost: process creation, D3D11 device creation and the
+    BC7 compute-shader compile. Measured on the RTX 4070 SUPER with scripts/bench_texconv.py, a
+    512x512 BC7 costs 0.32 s alone and 0.06 s each in a call of 64, and the run's queue is mostly
+    textures far smaller than that. So the run hands the encoder a batch, and this is the batch.
+
+    texconv converts the files it is given one after another; a file it cannot convert is
+    reported and skipped, and the exit code is non-zero at the END if any was. So a non-zero
+    exit does not mean the batch failed: inputs go in `in/`, outputs come out in `out/`, and an
+    output that is not there is the one that failed. Those are retried one at a time through
+    `_texconv`, which is where the retry lives and which raises a message that can name a file.
+    """
+    if not rgbas:
+        return []
+    if len(rgbas) == 1:
+        try:
+            return [_texconv(rgbas[0], fmt_name, mips)]
+        except Exception as e:
+            return [e]
+    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    os.makedirs(paths.SCRATCH, exist_ok=True)
+    out: list = [None] * len(rgbas)
+    with tempfile.TemporaryDirectory(dir=paths.SCRATCH) as td:
+        src_dir, out_dir = os.path.join(td, "in"), os.path.join(td, "out")
+        os.makedirs(src_dir)
+        os.makedirs(out_dir)
+        names = ["%04d.dds" % i for i in range(len(rgbas))]
+        for name, rgba in zip(names, rgbas, strict=True):
+            pathlib.Path(src_dir, name).write_bytes(_dds_rgba(rgba))
+        cmd = _texconv_cmd(fmt_name, mips, out_dir) + [os.path.join(src_dir, n) for n in names]
+        subprocess.run(cmd, capture_output=True, text=True, creationflags=flags, check=False)
+        for i, name in enumerate(names):
+            produced = pathlib.Path(out_dir, name)
+            if produced.is_file():
+                out[i] = produced.read_bytes()
+    for i, rgba in enumerate(rgbas):
+        if out[i] is None:
+            try:
+                out[i] = _texconv(rgba, fmt_name, mips)
+            except Exception as e:
+                out[i] = e
+    return out
 
 
 # The formats texconv is asked for, by .tex format code. This is also the set of block
@@ -353,6 +407,11 @@ def encode_tiers(rgba_top, fmt=BC7, attributes=None, offsets=(0,), keep_mips=Tru
             levels.append(_dds_split(buf.getvalue(), 16, L.shape[1], L.shape[0], 1)[0])
     else:
         raise ValueError(f"no chain encoder for format {fmt:#x}")
+    return _cut_tiers(levels, fmt, w, h, attr, offsets, keep_mips)
+
+
+def _cut_tiers(levels, fmt, w, h, attr, offsets, keep_mips):
+    """One .tex per requested tier out of an encoded mip chain (see encode_tiers). -> {offset: bytes}"""
     out = {}
     for k in offsets:
         if k >= len(levels):
@@ -365,6 +424,46 @@ def encode_tiers(rgba_top, fmt=BC7, attributes=None, offsets=(0,), keep_mips=Tru
             else kb.texwrite.write_blocks(fmt, lv, cw, ch, attr)
         )
     return out
+
+
+def encode_tiers_many(items):
+    """`encode_tiers` for a batch, one result per item and one item's failure never the batch's.
+
+    items are (rgba_top, fmt, attributes, offsets, keep_mips); the result has one entry per item,
+    in order -- the {offset: bytes} dict, or the exception that item raised.
+
+    On the texconv path every item of one block format goes through a single texconv invocation
+    (see `_texconv_many`); the pixels are exactly those `encode_tiers` would produce for the item
+    alone, since texconv converts each file independently. Everything else is `encode_tiers`
+    per item.
+    """
+    results: list = [None] * len(items)
+    by_fmt: dict = {}
+    for i, (rgba, fmt, attributes, offsets, keep_mips) in enumerate(items):
+        if use_texconv() and fmt in TEXCONV_FORMAT:
+            by_fmt.setdefault(fmt, []).append(i)
+            continue
+        try:
+            results[i] = encode_tiers(rgba, fmt, attributes, offsets=offsets, keep_mips=keep_mips)
+        except Exception as e:
+            results[i] = e
+    for fmt, idx in by_fmt.items():
+        arrays = [np.ascontiguousarray(items[i][0], np.uint8) for i in idx]
+        encoded = _texconv_many(arrays, TEXCONV_FORMAT[fmt], 0)  # -m 0: the full chain
+        for i, a, dds in zip(idx, arrays, encoded, strict=True):
+            if isinstance(dds, Exception):
+                results[i] = dds
+                continue
+            _rgba, _fmt, attributes, offsets, keep_mips = items[i]
+            h, w = a.shape[:2]
+            n = full_mips(w, h)
+            attr = kb.texwrite.ATTR_2D if attributes is None else attributes
+            try:
+                levels = _dds_split(dds, kb.texwrite.BLOCK_BYTES[fmt], w, h, n)
+                results[i] = _cut_tiers(levels, fmt, w, h, attr, offsets, keep_mips)
+            except Exception as e:
+                results[i] = e
+    return results
 
 
 def out_format(src_fmt_name, role):

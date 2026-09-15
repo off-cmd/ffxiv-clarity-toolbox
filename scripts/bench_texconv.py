@@ -124,6 +124,34 @@ def bench_concurrency(dds: bytes, levels: list[int], repeats: int, scratch: str)
     return rows
 
 
+def bench_combined(
+    dds: bytes, n: int, levels: list[int], repeats: int, scratch: str
+) -> list[tuple]:
+    """k concurrent invocations of n files each: the cell `--encode-workers` is chosen from."""
+    rows = []
+    for k in levels:
+        walls = []
+        for _ in range(repeats):
+            with tempfile.TemporaryDirectory(dir=scratch) as td:
+                jobs = []
+                for i in range(k):
+                    d = os.path.join(td, f"w{i}")
+                    os.makedirs(os.path.join(d, "out"))
+                    names = []
+                    for j in range(n):
+                        p = os.path.join(d, f"in_{j:03d}.dds")
+                        with open(p, "wb") as f:
+                            f.write(dds)
+                        names.append(p)
+                    jobs.append((names, os.path.join(d, "out")))
+                t0 = time.perf_counter()
+                with ThreadPoolExecutor(max_workers=k) as pool:
+                    list(pool.map(lambda j: run_texconv(*j), jobs))
+                walls.append(time.perf_counter() - t0)
+        rows.append((k, statistics.median(walls), statistics.median(walls) / (k * n)))
+    return rows
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--size", type=int, default=512, help="square source edge (default 512)")
@@ -166,12 +194,26 @@ def main() -> int:
         print(f"  {k:>4}  {wall:>10.3f}  {per:>10.4f}  {cbase / per:>7.1f}x")
 
     best_n, _c, best_per, _wi, _ro = min(rows, key=lambda r: r[2])
+    # Both at once: batched calls, several in flight. If this row beats the batched row at the
+    # same n, texconv is not saturating the GPU on its own and --encode-workers 2 (or more) is
+    # worth it; if it does not, one worker is the answer and the flag stays at 1.
+    n_c = min(32, a.max_batch)
+    print(f"\nCONCURRENT BATCHED INVOCATIONS ({n_c} files each)")
+    print(f"  {'k':>4}  {'wall (s)':>10}  {'per file':>10}  {'vs k=1':>8}")
+    brows = bench_combined(dds, n_c, [1, 2, 4], a.repeats, scratch)
+    bbase = brows[0][2]
+    for k, wall, per in brows:
+        print(f"  {k:>4}  {wall:>10.3f}  {per:>10.4f}  {bbase / per:>7.2f}x")
+    best_k, _w, best_kper = min(brows, key=lambda r: r[2])
     queued = 375814
     print(
         f"\nBest batched cost: {best_per:.4f} s/file at n={best_n}"
         f"  (from {base:.4f} s at n=1)"
         f"\nOver {queued:,} queued rows: {queued * base / 3600:.1f} h -> "
         f"{queued * best_per / 3600:.1f} h"
+        f"\nWith {best_k} worker(s) of {n_c}: {best_kper:.4f} s/file -> "
+        f"{queued * best_kper / 3600:.1f} h"
+        f"\n\nSuggested: clarity run --encode-batch {n_c} --encode-workers {best_k}"
     )
     return 0
 

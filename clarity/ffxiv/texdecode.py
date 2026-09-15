@@ -92,8 +92,12 @@ def _bc_alpha_plane(data, w, h, stride, off):
 def decode(tex_bytes: bytes, mip: int = 0) -> np.ndarray:
     """Decode one mip of a 2.0-era `.tex` file -> (H, W, 4) uint8 RGBA."""
     h = texfile.TexHeader(tex_bytes)
-    off = h.surface_offsets[mip] or h.surface_offsets[0]
-    w, ht = max(h.width >> mip, 1), max(h.height >> mip, 1)
+    if not 0 <= mip < h.mip_count or h.surface_offsets[mip] == 0:
+        # Falling back to mip 0 here returned the wrong surface silently; a caller that
+        # asks for a level the file does not have should hear about it.
+        raise ValueError(f"mip {mip} not present (file has {h.mip_count})")
+    off = h.surface_offsets[mip]
+    w, ht, _d = h.mip_dimensions(mip)
     size = h.surface_size(mip)
     return decode_raw(h.format_name, tex_bytes[off : off + size], w, ht)
 

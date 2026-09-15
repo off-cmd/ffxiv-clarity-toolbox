@@ -126,15 +126,9 @@ class GameData:
         parsed = parse_path(path)
         if parsed is None:
             return None
-        cat, exp, chunk = parsed
-        repo_name = (
-            path.lower().split("/")[1]
-            if path.lower().split("/")[0] in ("bg", "cut", "music")
-            and len(path.split("/")) > 1
-            and path.lower().split("/")[1] in EXPANSIONS
-            else "ffxiv"
-        )
-        # generic: try the explicit expansion segment, else ffxiv
+        cat, _exp, chunk = parsed
+        # The repository is the explicit expansion segment when the path carries one
+        # (bg/ex3/..., music/ex1/...), otherwise the base game.
         segs = path.lower().strip("/").split("/")
         repo_name = segs[1] if len(segs) > 1 and segs[1] in EXPANSIONS else "ffxiv"
         exp = EXPANSIONS[repo_name]
@@ -216,43 +210,42 @@ def close_dats():
 
 
 def read_file(dat_path, offset):
-    if True:
-        f = _dat(dat_path)
-        f.seek(offset)
-        hsize, ftype, raw_size = struct.unpack("<3I", f.read(12))
-        f.seek(offset)
-        head = f.read(hsize)
-        out = io.BytesIO()
-        if ftype == FT_STANDARD:
-            nblocks = struct.unpack_from("<I", head, 0x14)[0]
-            for i in range(nblocks):
-                boff, csz, usz = struct.unpack_from("<IHH", head, 0x18 + i * 8)
-                _block(f, offset + hsize + boff, out)
-        elif ftype == FT_TEXTURE:
-            nblocks = struct.unpack_from("<I", head, 0x14)[0]
-            lods = [
-                struct.unpack_from("<5I", head, 0x18 + i * 20) for i in range(nblocks)
-            ]
-            # sub-block compressed sizes follow the LodBlock array
-            sub = struct.unpack_from(
-                f"<{sum(l[4] for l in lods)}H", head, 0x18 + nblocks * 20
-            )
-            mip_hdr = lods[0][0]
-            if mip_hdr:  # raw .tex header sits before block 0
-                f.seek(offset + hsize)
-                out.write(f.read(mip_hdr))
-            si = 0
-            for lb in lods:
-                run = offset + hsize + lb[0]
-                for _ in range(lb[4]):
-                    _block(f, run, out)
-                    run += sub[si]
-                    si += 1
-        elif ftype == FT_MODEL:
-            return _read_model(f, offset, head, raw_size)
-        else:
-            raise ValueError(f"unsupported/empty file type {ftype}")
-        return out.getvalue()
+    f = _dat(dat_path)
+    f.seek(offset)
+    hsize, ftype, raw_size = struct.unpack("<3I", f.read(12))
+    f.seek(offset)
+    head = f.read(hsize)
+    out = io.BytesIO()
+    if ftype == FT_STANDARD:
+        nblocks = struct.unpack_from("<I", head, 0x14)[0]
+        for i in range(nblocks):
+            boff, csz, usz = struct.unpack_from("<IHH", head, 0x18 + i * 8)
+            _block(f, offset + hsize + boff, out)
+    elif ftype == FT_TEXTURE:
+        nblocks = struct.unpack_from("<I", head, 0x14)[0]
+        lods = [
+            struct.unpack_from("<5I", head, 0x18 + i * 20) for i in range(nblocks)
+        ]
+        # sub-block compressed sizes follow the LodBlock array
+        sub = struct.unpack_from(
+            f"<{sum(l[4] for l in lods)}H", head, 0x18 + nblocks * 20
+        )
+        mip_hdr = lods[0][0]
+        if mip_hdr:  # raw .tex header sits before block 0
+            f.seek(offset + hsize)
+            out.write(f.read(mip_hdr))
+        si = 0
+        for lb in lods:
+            run = offset + hsize + lb[0]
+            for _ in range(lb[4]):
+                _block(f, run, out)
+                run += sub[si]
+                si += 1
+    elif ftype == FT_MODEL:
+        return _read_model(f, offset, head, raw_size)
+    else:
+        raise ValueError(f"unsupported/empty file type {ftype}")
+    return out.getvalue()
 
 
 def _read_model(f, offset, head, raw_size):
@@ -555,15 +548,14 @@ def entry_fingerprint(dat_path, offset, digest_size=16):
 def read_tex_header(dat_path, offset, nbytes=80):
     """Fast path: a texture-type dat entry stores the raw .tex header uncompressed
     immediately after the entry header, so we can read it without inflating mips."""
-    with open(dat_path, "rb") as f:
-        f.seek(offset)
-        hsize, ftype, raw_size = struct.unpack("<3I", f.read(12))
-        if ftype != FT_TEXTURE:
-            return None
-        f.seek(offset + 0x14)
-        nblocks = struct.unpack("<I", f.read(4))[0]
-        first_comp_offset = struct.unpack("<I", f.read(4))[0]
-        if first_comp_offset == 0:
-            return None
-        f.seek(offset + hsize)
-        return f.read(min(nbytes, first_comp_offset))
+    f = _dat(dat_path)
+    f.seek(offset)
+    hsize, ftype, _raw_size = struct.unpack("<3I", f.read(12))
+    if ftype != FT_TEXTURE:
+        return None
+    f.seek(offset + 0x18)
+    first_comp_offset = struct.unpack("<I", f.read(4))[0]
+    if first_comp_offset == 0:
+        return None
+    f.seek(offset + hsize)
+    return f.read(min(nbytes, first_comp_offset))

@@ -92,10 +92,22 @@ class TexHeader:
             return "1D"
         return f"?(0x{t:08x})"
 
+    def mip_dimensions(self, mip=0):
+        """(width, height, depth) of one mip level.
+
+        Direct3D and Lumina both halve with floor and clamp at 1, so a 12-wide texture is
+        6, 3, 1, 1 down the chain -- never 2 at the third level. This is the single
+        definition; `surface_size` and the decoder both use it, so the byte count and the
+        pixel count of a surface can no longer disagree for non-power-of-two sizes.
+        """
+        return (
+            max(1, self.width >> mip),
+            max(1, self.height >> mip),
+            max(1, self.depth >> mip),
+        )
+
     def surface_size(self, mip=0):
-        w = (self.width + (1 << mip) - 1) >> mip
-        h = (self.height + (1 << mip) - 1) >> mip
-        d = (self.depth + (1 << mip) - 1) >> mip or 1
+        w, h, d = self.mip_dimensions(mip)
         if self.is_block_compressed:
             w = (w + 3) & ~3
             h = (h + 3) & ~3

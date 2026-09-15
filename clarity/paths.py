@@ -1,34 +1,78 @@
-"""Where things live, derived from the project layout (P:\\meta-index\\STRUCTURE.md, TREE-FULL.md).
+"""Where things live.
 
-    P:\\projects\\ffxiv-texture-upscale\\
-    ├── scripts-local\\clarity-upscale\\      this package (tracked)
-    │   └── models\\registry*.json           model-slot config (tracked)
-    ├── build-output\\manifest.sqlite        the working database (ignored, hash-guarded)
-    ├── analysis-specimens\\models\\          model weights, as obtained
-    ├── analysis-specimens\\reslogger\\       CurrentPathList-<date>.gz from rl2.perchbird.dev
-    ├── vendor-tools\\texconv\\texconv.exe    a *release* DirectXTex texconv
-    └── hash-manifests\\                     texture-fingerprints.tsv (exported by `clarity fingerprint --export`)
+Every location below is a default, not a rule: the ``CLARITY_*`` variable named beside it
+wins when set. The defaults describe one project directory::
 
+    <project>/
+    ├── build-output/manifest.sqlite          the working database (ignored, hash-guarded)
+    ├── build-output/out/                     packed Penumbra mods
+    ├── analysis-specimens/models/            model weights, as obtained
+    ├── analysis-specimens/reslogger/         CurrentPathList-<date>.gz from rl2.perchbird.dev
+    ├── vendor-tools/texconv/texconv.exe      a *release* DirectXTex texconv
+    ├── hash-manifests/texture-fingerprints.tsv
+    └── temp-scratch/texconv/                 texconv's per-texture scratch (see SCRATCH)
 
-Every one of these is a default, not a rule: the CLARITY_* variable in the right-hand column wins.
-The layout is walked from this file's location, so the package works wherever the project is
-mounted (P: on Windows, /sessions/.../mnt/projects on Linux) without a config file.
+The project directory is found in this order:
+
+1. ``CLARITY_PROJECT``, when set.
+2. The repository root, when this package is imported from a source checkout (the
+   directory above the package contains ``pyproject.toml``).
+3. The current working directory. This is the case for an installed wheel: ``cd`` into the
+   directory you want the pipeline to use and run ``clarity where`` to see what resolved.
+
+The tracked model registry ships inside the package (``clarity/models/registry.json``) so
+that an installed copy has a working default; ``CLARITY_REGISTRY`` overrides it.
 """
+
+from __future__ import annotations
 
 import glob
 import os
-from typing import Optional
 
-PACKAGE = os.path.dirname(os.path.abspath(__file__))
-TOOL_ROOT = os.path.normpath(os.path.join(PACKAGE, ".."))  # the repository root
-PROJECT = TOOL_ROOT
-PROJECTS = os.path.normpath(os.path.join(PROJECT, ".."))  # P:\workspaces
+__all__ = [
+    "DB",
+    "FINGERPRINTS",
+    "MODELS",
+    "PACKAGE",
+    "PROJECT",
+    "PROJECTS",
+    "REGISTRY",
+    "RESLOGGER_DIR",
+    "SCRATCH",
+    "TEXCONV",
+    "TOOL_ROOT",
+    "describe",
+    "newest_pathlist",
+]
 
 
-def _env(name, default):
-    v = os.environ.get(name)
-    return v if v else default
+def _env(name: str, default: str) -> str:
+    """The environment variable ``name``, or ``default`` when unset or empty."""
+    value = os.environ.get(name)
+    return value if value else default
 
+
+def _project_root() -> str:
+    explicit = os.environ.get("CLARITY_PROJECT")
+    if explicit:
+        return os.path.abspath(explicit)
+    checkout = os.path.normpath(os.path.join(PACKAGE, ".."))
+    if os.path.isfile(os.path.join(checkout, "pyproject.toml")):
+        return checkout
+    return os.getcwd()
+
+
+PACKAGE: str = os.path.dirname(os.path.abspath(__file__))
+"""The ``clarity`` package directory."""
+
+PROJECT: str = _project_root()
+"""The project directory every default below hangs off. See the module docstring."""
+
+TOOL_ROOT: str = PROJECT
+"""Alias for :data:`PROJECT`, kept for the benchmarking scripts."""
+
+PROJECTS: str = os.path.normpath(os.path.join(PROJECT, ".."))
+"""The directory holding sibling projects (``P:\\workspaces`` on the archive drive)."""
 
 # Where texconv's per-texture scratch files go.
 #
@@ -43,43 +87,46 @@ def _env(name, default):
 # The default keeps it inside the project. Point CLARITY_SCRATCH at a RAM disk or a scratch SSD if
 # the write volume matters: the files are written once, read once, and deleted, so this is pure
 # churn -- at roughly 340 MiB a texture it dwarfs the ~404 GB of real output.
-SCRATCH = _env("CLARITY_SCRATCH", os.path.join(PROJECT, "temp-scratch", "texconv"))
+SCRATCH: str = _env("CLARITY_SCRATCH", os.path.join(PROJECT, "temp-scratch", "texconv"))
 
-DB = _env("CLARITY_DB", os.path.join(PROJECT, "build-output", "manifest.sqlite"))
-MODELS = _env("CLARITY_MODELS", os.path.join(PROJECT, "analysis-specimens", "models"))
-REGISTRY = _env("CLARITY_REGISTRY", os.path.join(TOOL_ROOT, "models", "registry.json"))
-TEXCONV = _env(
+DB: str = _env("CLARITY_DB", os.path.join(PROJECT, "build-output", "manifest.sqlite"))
+MODELS: str = _env("CLARITY_MODELS", os.path.join(PROJECT, "analysis-specimens", "models"))
+REGISTRY: str = _env("CLARITY_REGISTRY", os.path.join(PACKAGE, "models", "registry.json"))
+TEXCONV: str = _env(
     "CLARITY_TEXCONV", os.path.join(PROJECT, "vendor-tools", "texconv", "texconv.exe")
 )
-
-FINGERPRINTS = _env(
+FINGERPRINTS: str = _env(
     "CLARITY_FINGERPRINTS",
     os.path.join(PROJECT, "hash-manifests", "texture-fingerprints.tsv"),
 )
-RESLOGGER_DIR = os.path.join(PROJECT, "analysis-specimens", "reslogger")
+RESLOGGER_DIR: str = os.path.join(PROJECT, "analysis-specimens", "reslogger")
 
 
-def newest_pathlist():
-    """The most recent ResLogger list in analysis-specimens\\reslogger, or None."""
-    env = os.environ.get("CLARITY_PATHLIST")
-    if env:
-        return env
-    cands = sorted(glob.glob(os.path.join(RESLOGGER_DIR, "CurrentPathList*.gz")))
-    return cands[-1] if cands else None
+def newest_pathlist() -> str | None:
+    """The most recent ResLogger list in ``analysis-specimens/reslogger``, or ``None``.
+
+    ``CLARITY_PATHLIST`` names one explicitly.
+    """
+    explicit = os.environ.get("CLARITY_PATHLIST")
+    if explicit:
+        return explicit
+    candidates = sorted(glob.glob(os.path.join(RESLOGGER_DIR, "CurrentPathList*.gz")))
+    return candidates[-1] if candidates else None
 
 
-def describe():
+def describe() -> str:
+    """The resolved layout as a table, marking anything that does not exist. ``clarity where``."""
     rows = [
+        ("project", PROJECT),
         ("db", DB),
         ("models", MODELS),
         ("registry", REGISTRY),
         ("texconv", TEXCONV),
         ("scratch", SCRATCH),
-        
         ("fingerprints", FINGERPRINTS),
         ("path list", newest_pathlist() or "(none)"),
     ]
     return "\n".join(
-        "  %-12s %s%s" % (k, v, "" if os.path.exists(v) else "   (missing)")
-        for k, v in rows
+        f"  {key:<12} {value}{'' if os.path.exists(value) else '   (missing)'}"
+        for key, value in rows
     )

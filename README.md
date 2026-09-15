@@ -57,7 +57,7 @@ overridden by an environment variable:
 |---|---|
 | `CLARITY_DB` | `build-output/manifest.sqlite` |
 | `CLARITY_MODELS` | `analysis-specimens/models/` |
-| `CLARITY_REGISTRY` | `models/registry.json` |
+| `CLARITY_REGISTRY` | `clarity/models/registry.json` (package data) |
 | `CLARITY_TEXCONV` | `vendor-tools/texconv/texconv.exe` |
 | `CLARITY_SCRATCH` | `temp-scratch/texconv/` |
 | `CLARITY_FINGERPRINTS` | `hash-manifests/texture-fingerprints.tsv` |
@@ -100,7 +100,8 @@ remembered.
 
 **XIVUpscaler does not redistribute neural-network model weights.** The nine files below are
 external dependencies that you obtain separately and place in `analysis-specimens/models/` (or
-wherever `CLARITY_MODELS` points). `models/registry.json` maps each pipeline slot to a filename.
+wherever `CLARITY_MODELS` points). `clarity/models/registry.json` maps each pipeline slot to a
+filename; a `registry.json` beside the weights overrides individual slots.
 
 Licenses below were read from each model's own listing in September 2026, not inferred from the
 file names.

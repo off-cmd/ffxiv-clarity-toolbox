@@ -1,7 +1,8 @@
 """Super-resolution engine: spandrel-loaded ESRGAN-family models on the GPU with tiling, or a
 Lanczos fallback (CPU, no torch) so the plumbing runs anywhere.
 
-Model slots → files in `models/` (override with models/registry.json). The defaults are the
+Model slots → weight files. The tracked mapping is `clarity/models/registry.json` (package
+data); `<models_dir>/registry.json` beside the weights overrides it per slot. The defaults are the
 models Kartoffels' ChaiNNer chains use (KB 08), all on openmodeldb.info:
 
     bc1clean  1x_BC1-smooth2.pth            1×, run on every BC1 source before anything else
@@ -33,8 +34,7 @@ DEFAULT_REGISTRY = {
     "hair": "4x_UltraFArt_v3.pth",
     "ui": "4x_foolhardy_Remacri.pth",
 }
-# The 2024–2025 picks (see KB 30-postprocess/17): drop these files into models/ and copy
-# models/registry.recommended.json to models/registry.json.
+# The 2024–2025 picks (see KB 30-postprocess/17). Slot names match the tracked registry.
 RECOMMENDED_REGISTRY = {
     "bc1clean": None,  # PBRify models were trained with BC/dds compression in the LR
     "normal": "4x-Normal-RG0-BC7.pth",

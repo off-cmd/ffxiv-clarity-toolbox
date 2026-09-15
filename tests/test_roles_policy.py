@@ -113,14 +113,13 @@ def test_family_cap_is_exclusive_and_all_or_nothing() -> None:
 
 
 @pytest.mark.parametrize("family", ["human-hair", "vfx", "no-such-family"])
-def test_override_on_a_none_family_is_honoured_then_capped_to_native(family) -> None:
-    # POLICY gives (None, 0); the override supplies a tier, and the zero cap then halves it to
-    # native for any real size. The result is a tier, not None: the caller's `top is None`
-    # guard does not fire. generation_tier() has its own guard for the everyday profile.
-    assert roles.top_tier(family, 512, 512, "2x") == "native"
-    assert roles.top_tier(family, 512, 512, "4x") == "native"
-    # ...and only a degenerate 0x0 source keeps the override, because 0 is not > 0.
-    assert roles.top_tier(family, 0, 0, "2x") == "2x"
+def test_override_cannot_resurrect_an_excluded_family(family) -> None:
+    # Regression: POLICY gives (None, 0) and the override used to replace the None tier, so
+    # `run --family human-hair --top 2x` produced native-tier products for a family the
+    # policy excludes. An override picks a tier; it does not pick which families exist.
+    assert roles.top_tier(family, 512, 512, "2x") is None
+    assert roles.top_tier(family, 512, 512, "4x") is None
+    assert roles.top_tier(family, 0, 0, "2x") is None
 
 
 def test_unknown_override_raises() -> None:

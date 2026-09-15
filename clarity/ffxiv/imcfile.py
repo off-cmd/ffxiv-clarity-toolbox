@@ -55,10 +55,14 @@ class ImcEntry:
 class ImcFile:
     def __init__(self, data: bytes):
         count, part_mask = struct.unpack_from("<2H", data, 0)
-        self.part_count = bin(part_mask).count("1")
         self.part_mask = part_mask
         self.count = count
-        self.variants = []  # [variant][part] -> ImcEntry
+        # Only the parts whose bit is set in part_mask are stored, in bit order. Equipment
+        # ships 0x1F (all five), but the mask is the format's word on the matter and a
+        # reader that ignores it reads the wrong slot from any file that does not.
+        self.present = [i for i in range(16) if part_mask >> i & 1]
+        self.part_count = len(self.present)
+        self.variants = []  # [variant][stored index] -> ImcEntry
         o = 4
         for _ in range(count + 1):  # entry 0 is the default
             parts = []
@@ -69,13 +73,17 @@ class ImcFile:
             self.variants.append(parts)
 
     def entry(self, variant, slot):
-        """Variant is 1-based as stored in Item.ModelMain."""
-        part = SLOT_PART.get(slot, 0)
-        if self.part_count == 1:
-            part = 0
-        if variant >= len(self.variants) or part >= self.part_count:
+        """The entry for ``variant`` (1-based, as stored in Item.ModelMain) and equipment ``slot``.
+
+        Returns ``None`` when the variant is out of range or the slot's part is not present in
+        this file. An unknown slot name is a programming error and raises ``KeyError``.
+        """
+        if slot not in SLOT_PART:
+            raise KeyError(f"unknown equipment slot {slot!r}; one of {sorted(SLOT_PART)}")
+        part = 0 if self.part_count == 1 else SLOT_PART[slot]
+        if not 0 <= variant < len(self.variants) or part not in self.present:
             return None
-        return self.variants[variant][part]
+        return self.variants[variant][self.present.index(part)]
 
 
 def load(gd, eid, kind="equipment"):

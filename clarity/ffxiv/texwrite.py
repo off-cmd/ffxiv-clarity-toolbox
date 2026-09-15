@@ -48,15 +48,7 @@ def write(rgba, attributes=ATTR_2D, mips=1):
     if a.shape[2] == 3:
         a = np.dstack([a, np.full(a.shape[:2], 255, np.uint8)])
     h, w = a.shape[:2]
-    levels, cur = [], a
-    for _ in range(max(1, mips)):
-        levels.append(cur)
-        if cur.shape[0] <= 1 or cur.shape[1] <= 1:
-            break
-        hh, ww = cur.shape[0] // 2, cur.shape[1] // 2
-        cur = (
-            (cur[: 2 * hh, : 2 * ww].reshape(hh, 2, ww, 2, 4).mean((1, 3))).round().astype(np.uint8)
-        )
+    levels = mip_chain(a, mips)
     body = b"".join(L[:, :, [2, 1, 0, 3]].tobytes() for L in levels)
     d = bytearray(HDR)
     struct.pack_into("<IIHHHBB", d, 0, attributes, B8G8R8A8, w, h, 1, len(levels), 1)
@@ -77,18 +69,35 @@ def write_like(rgba, reference_tex, mips=1):
 
 
 def mip_chain(rgba, mips):
-    """Box-filtered RGBA levels, largest first."""
+    """Box-filtered RGBA levels, largest first, down to 1x1 or ``mips`` levels.
+
+    Each edge halves and clamps at 1 on its own, so a 16x4 source has 16x4, 8x2, 4x1, 2x1,
+    1x1 -- the same rule as ``TexHeader.mip_dimensions`` and ``texio.float_chain``. The
+    earlier loop stopped as soon as *either* edge reached 1, which gave non-square textures
+    a shorter chain here than ``encode_tiers`` wrote for the same image.
+    """
     a = np.asarray(rgba, np.uint8)
     levels, cur = [], a
     for _ in range(max(1, mips)):
         levels.append(cur)
-        if cur.shape[0] <= 1 or cur.shape[1] <= 1:
+        if cur.shape[0] <= 1 and cur.shape[1] <= 1:
             break
-        hh, ww = max(1, cur.shape[0] // 2), max(1, cur.shape[1] // 2)
-        cur = (
-            (cur[: 2 * hh, : 2 * ww].reshape(hh, 2, ww, 2, 4).mean((1, 3))).round().astype(np.uint8)
-        )
+        cur = _box_down(cur)
     return levels
+
+
+def _box_down(cur):
+    """One mip step: a 2x2 box average, degrading to 2x1 or 1x2 once an edge has reached 1."""
+    h, w = cur.shape[:2]
+    hh, ww = max(1, h // 2), max(1, w // 2)
+    f = cur[: 2 * hh if h > 1 else 1, : 2 * ww if w > 1 else 1].astype(np.float32)
+    if h > 1 and w > 1:
+        m = f.reshape(hh, 2, ww, 2, 4).mean((1, 3))
+    elif h > 1:
+        m = f.reshape(hh, 2, 1, 4).mean(1)
+    else:
+        m = f.reshape(1, ww, 2, 4).mean(2)
+    return m.round().astype(np.uint8)
 
 
 def write_blocks(fmt, levels_blocks, w, h, attributes=ATTR_2D):

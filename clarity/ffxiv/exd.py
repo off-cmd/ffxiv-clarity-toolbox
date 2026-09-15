@@ -2,12 +2,11 @@
 
 import struct
 
-TYPE_SIZE = {0: 4, 1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 4, 7: 4, 8: 4, 9: 4, 11: 8}
-
 
 class Exh:
     def __init__(self, data):
-        assert data[:4] == b"EXHF", "not an EXHF"
+        if data[:4] != b"EXHF":
+            raise ValueError("not an EXHF file")
         (
             self.version,
             self.data_offset,
@@ -32,7 +31,8 @@ class Exh:
 
 class Exd:
     def __init__(self, data, exh):
-        assert data[:4] == b"EXDF", "not an EXDF"
+        if data[:4] != b"EXDF":
+            raise ValueError("not an EXDF file")
         self.data = data
         self.exh = exh
         (index_size,) = struct.unpack_from(">I", data, 8)
@@ -72,6 +72,8 @@ class Exd:
                 out.append(struct.unpack_from(">I", self.data, p)[0])
             elif t == 9:
                 out.append(struct.unpack_from(">f", self.data, p)[0])
+            elif t == 10:
+                out.append(struct.unpack_from(">q", self.data, p)[0])
             elif t == 11:
                 out.append(struct.unpack_from(">Q", self.data, p)[0])
             elif t >= 25:

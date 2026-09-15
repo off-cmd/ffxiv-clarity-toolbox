@@ -101,7 +101,7 @@ def test_single_part_tables_ignore_the_slot() -> None:
     data = _imc(0, 0b1, [_entry(4, 0, 0, 0, 0, 0)])
     imc = imcfile.ImcFile(data)
     assert imc.part_count == 1
-    for slot in ("met", "sho", "ril", "not-a-slot"):
+    for slot in ("met", "sho", "ril"):
         assert imc.entry(0, slot).material_id == 4
 
 
@@ -113,15 +113,27 @@ def test_out_of_range_variant_or_part_returns_none() -> None:
     assert imc.entry(1, "glv") is not None
 
 
-def test_unknown_slot_falls_back_to_part_zero() -> None:
-    # The module does not raise: SLOT_PART.get(slot, 0) silently picks the first part. This
-    # pins that behaviour so a change to raising is a deliberate one.
-    data, table = _random_imc(3, count=1, part_mask=ALL_PARTS)
+def test_unknown_slot_is_a_programming_error() -> None:
+    # Regression: SLOT_PART.get(slot, 0) used to hand a typo'd slot the `met` entry silently.
+    data, _table = _random_imc(3, count=1, part_mask=ALL_PARTS)
     imc = imcfile.ImcFile(data)
-    e = imc.entry(1, "xyz")
-    assert e is not None
-    assert e.material_id == table[1][0][0]
-    assert e is imc.entry(1, "met")
+    with pytest.raises(KeyError, match="unknown equipment slot 'xyz'"):
+        imc.entry(1, "xyz")
+
+
+def test_part_mask_selects_which_parts_are_stored() -> None:
+    # Regression: the reader counted the mask's bits but then indexed stored parts by slot
+    # number, so a file with parts 1 and 3 present (mask 0b01010) served `top` the entry that
+    # belonged to `dwn`. Stored parts are the set bits, in order.
+    entries = [_entry(11, 0, 0, 0, 0, 0), _entry(33, 0, 0, 0, 0, 0)]  # parts 1 (top) and 3 (dwn)
+    data = _imc(0, 0b01010, entries)
+    imc = imcfile.ImcFile(data)
+    assert imc.part_count == 2
+    assert imc.present == [1, 3]
+    assert imc.entry(0, "top").material_id == 11
+    assert imc.entry(0, "dwn").material_id == 33
+    assert imc.entry(0, "met") is None  # part 0 is not in this file
+    assert imc.entry(0, "glv") is None  # nor part 2
 
 
 def test_truncated_table_raises() -> None:

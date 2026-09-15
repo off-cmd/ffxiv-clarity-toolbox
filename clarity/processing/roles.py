@@ -56,10 +56,14 @@ def top_tier(family: str, w: int, h: int, override: str | None = None) -> str | 
         The target tier string, or None if skipped.
     """
     tier, cap = POLICY.get(family, (None, 0))
+    if tier is None:
+        # A family with no tier is excluded (human-hair: Hair Defined 2 owns it; vfx), and
+        # skip_reason() marks its rows at plan time. An override selects a tier, it does
+        # not resurrect a family, or `run --family human-hair --top 2x` would produce
+        # products the policy says never to make.
+        return None
     if override:
         tier = override
-    if tier is None:
-        return None
     s = TIER_SCALE[tier]
     while s > 1 and (max(w, h) > cap or max(w, h) * s > MAX_EDGE_OUT):
         s //= 2

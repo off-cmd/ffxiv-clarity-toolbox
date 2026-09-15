@@ -125,9 +125,9 @@ def test_row_decodes_every_column_type_in_column_order(rid: int) -> None:
 
 
 def test_wrong_magic_raises() -> None:
-    with pytest.raises(AssertionError, match="not an EXHF"):
+    with pytest.raises(ValueError, match="not an EXHF"):
         exd.Exh(b"EXDF" + _exh()[4:])
-    with pytest.raises(AssertionError, match="not an EXDF"):
+    with pytest.raises(ValueError, match="not an EXDF"):
         exd.Exd(b"EXHF" + _exd()[4:], exd.Exh(_exh()))
 
 

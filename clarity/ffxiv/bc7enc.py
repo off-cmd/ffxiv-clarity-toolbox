@@ -41,15 +41,20 @@ def _blocks(rgba):
 
 
 def _fit_line(X):
-    """Principal direction of each block's texels: (B, C)."""
+    """Principal direction of each block's texels: (B, C).
+
+    The largest eigenvector of each block's 4x4 (or 3x3) covariance, from ``eigh``. The
+    earlier power iteration started from (1, 1, 1, 1) and could never leave it when the true
+    axis was orthogonal to that start -- a block with R rising while B falls by the same
+    amount, say -- so both endpoints collapsed to the block mean and the block decoded flat
+    with errors of 30 counts. A flat block never looks wrong at a glance, which is how the
+    encoder shipped with it.
+    """
     mu = X.mean(1, keepdims=True)
     Y = X - mu
     C = np.einsum("bic,bid->bcd", Y, Y)
-    d = np.ones((X.shape[0], X.shape[2]))
-    for _ in range(12):
-        d = np.einsum("bcd,bd->bc", C, d)
-        n = np.linalg.norm(d, axis=1, keepdims=True)
-        d = np.where(n > 1e-12, d / np.maximum(n, 1e-12), np.ones_like(d) / np.sqrt(X.shape[2]))
+    _w, v = np.linalg.eigh(C)  # ascending eigenvalues; the principal axis is the last column
+    d = v[:, :, -1]
     return mu[:, 0], d
 
 

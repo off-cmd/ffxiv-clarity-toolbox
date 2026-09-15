@@ -185,7 +185,7 @@ def pack(manifest, out, log=print):
 
     # A MOD WITH NO ROWS LEFT KEEPS ITS OLD JSON, AND SAYING SO IS THE HONEST OPTION.
     # Only mods that still have qualifying rows are rewritten, so if a family is requeued wholesale,
-    # reclassified out, or has its files deleted, the previous group_001_tier.json stays on disk and
+    # reclassified out, or has its files deleted, the previous meta.json stays on disk and
     # Penumbra keeps redirecting to it while this function's summary no longer mentions it. Deleting
     # it automatically would be worse: packing halfway through a rebuild is normal, and an empty
     # option list is indistinguishable from "not finished yet". So warn, and let the human decide.
@@ -195,7 +195,7 @@ def pack(manifest, out, log=print):
         for mod in MODS:
             if mod in per:
                 continue
-            if os.path.isfile(os.path.join(out, mod, "group_001_tier.json")):
+            if os.path.isfile(os.path.join(out, mod, "meta.json")):
                 log(
                     f"  NOTE: {mod} has a package on disk but no finished rows; its old redirections are"
                     f" still live. Delete {os.path.join(out, mod)} if it is obsolete."

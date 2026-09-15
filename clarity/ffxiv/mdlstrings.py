@@ -80,7 +80,7 @@ def rewrite(raw, mapping):
     # still sees what it expects.
     parts, new_off, cur = [], {}, 0
     p = 0
-    while p < len(blob):
+    for _ in range(_c):  # exactly string_count names; what follows is alignment padding
         e = blob.index(b"\0", p)
         old = blob[p:e].decode()
         new = mapping.get(old, old).encode()

@@ -48,10 +48,10 @@ def test_pixels_are_stored_bgra() -> None:
 def test_mip_chain_offsets_follow_the_header_and_cumulative_sizes() -> None:
     rng = np.random.default_rng(0)
     src = rng.integers(0, 256, (12, 20, 4), dtype=np.uint8)
-    data = texwrite.write(src, mips=8)  # 20x12 -> 10x6 -> 5x3 -> 2x1 -> stops (height 1)
+    data = texwrite.write(src, mips=8)  # 20x12 -> 10x6 -> 5x3 -> 2x1 -> 1x1
     hdr = tex.TexHeader(data)
-    assert hdr.mip_count == 4
-    expected = [(20, 12), (10, 6), (5, 3), (2, 1)]
+    assert hdr.mip_count == 5
+    expected = [(20, 12), (10, 6), (5, 3), (2, 1), (1, 1)]
     at = texwrite.HDR
     for k, dims in enumerate(expected):
         assert hdr.mip_dimensions(k)[:2] == dims
@@ -60,8 +60,8 @@ def test_mip_chain_offsets_follow_the_header_and_cumulative_sizes() -> None:
         at += hdr.surface_size(k)
     assert len(data) == at
     assert hdr.total_size() == at - texwrite.HDR
-    assert list(hdr.surface_offsets[:4]) == sorted(hdr.surface_offsets[:4])
-    assert not any(hdr.surface_offsets[4:])
+    assert list(hdr.surface_offsets[:5]) == sorted(hdr.surface_offsets[:5])
+    assert not any(hdr.surface_offsets[5:])
     # Mip 0 is the source, byte for byte (in BGRA).
     np.testing.assert_array_equal(
         np.frombuffer(data[texwrite.HDR : texwrite.HDR + 20 * 12 * 4], np.uint8).reshape(12, 20, 4),
@@ -99,7 +99,9 @@ def test_write_accepts_grey_rgb_and_float_input() -> None:
 def test_mip_chain_halves_and_clamps_at_one() -> None:
     src = np.zeros((8, 2, 4), np.uint8)
     levels = texwrite.mip_chain(src, mips=10)
-    assert [lvl.shape[:2] for lvl in levels] == [(8, 2), (4, 1)]  # width hit 1 -> stop
+    # Each edge clamps at 1 on its own; the chain runs until both are 1 (D3D, Lumina,
+    # TexHeader.mip_dimensions). It used to stop at (4, 1).
+    assert [lvl.shape[:2] for lvl in levels] == [(8, 2), (4, 1), (2, 1), (1, 1)]
     square = texwrite.mip_chain(np.zeros((4, 4, 4), np.uint8), mips=10)
     assert [lvl.shape[:2] for lvl in square] == [(4, 4), (2, 2), (1, 1)]
     assert len(texwrite.mip_chain(np.zeros((4, 4, 4), np.uint8), mips=0)) == 1  # at least mip 0

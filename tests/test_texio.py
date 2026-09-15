@@ -202,16 +202,17 @@ def test_encode_bgra8_round_trips_exactly() -> None:
     data = texio.encode(src, texio.BGRA8)
     hdr, back = texio.read(data)
     assert (hdr.width, hdr.height, hdr.format_name, hdr.texture_type) == (10, 6, "B8G8R8A8", "2D")
-    # full_mips(10, 6) is 4, but texwrite.write stops as soon as EITHER edge reaches 1, so the
-    # chain is 10x6, 5x3, 2x1 and the header honestly says 3. (encode_tiers goes on to 1x1.)
+    # One mip rule everywhere: 10x6, 5x3, 2x1, 1x1 -- the same chain encode_tiers writes.
+    # (texwrite.write used to stop as soon as either edge reached 1 and said 3 here.)
     assert texio.full_mips(10, 6) == 4
-    assert hdr.mip_count == 3
+    assert hdr.mip_count == 4
     np.testing.assert_array_equal(back, src)
     # The lower mips are box-filtered and readable too.
     assert texdecode.decode(data, 1).shape == (3, 5, 4)
     assert texdecode.decode(data, 2).shape == (1, 2, 4)
+    assert texdecode.decode(data, 3).shape == (1, 1, 4)
     with pytest.raises(ValueError):
-        texdecode.decode(data, 3)
+        texdecode.decode(data, 4)
 
 
 def test_encode_bgra8_with_explicit_mip_count() -> None:
@@ -254,8 +255,8 @@ def test_encode_bc3_round_trips_within_tolerance() -> None:
     src = _ramp(h=8, w=16, alpha=True)
     data = texio.encode(src, texio.BC3)
     hdr, back = texio.read(data)
-    # Same early stop as the BGRA8 path: 16x8, 8x4, 4x2, 2x1 and no 1x1 level.
-    assert (hdr.width, hdr.height, hdr.format_name, hdr.mip_count) == (16, 8, "BC3", 4)
+    # 16x8, 8x4, 4x2, 2x1, 1x1: the chain runs to 1x1 like every other writer here.
+    assert (hdr.width, hdr.height, hdr.format_name, hdr.mip_count) == (16, 8, "BC3", 5)
     mean, peak = _err(back, src)
     assert mean < 4.0 and peak <= 12, (mean, peak)
     assert texdecode.decode(data, 3).shape == (1, 2, 4)

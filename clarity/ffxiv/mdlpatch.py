@@ -267,10 +267,10 @@ class Mdl:
         stride = m["stride"][e["stream"]]
         fmt, n, _sz = VT[e["type"]]
         for k in range(m["vertex_count"]):
-            v = list(pos[k][:3])
+            v = [float(c) for c in pos[k][:3]]
             if n == 4:
                 v.append(1.0)  # w is always 1.0 for Half4 / Single4 positions
-            struct.pack_into(fmt, self.d, base + stride * k, *v[:n])
+            struct.pack_into(fmt, self.d, base + stride * k, *v[:n])  # ty: ignore[invalid-argument-type]
 
     def update_bounds(self):
         """bb[1] is the tight AABB; bb[0] is that AABB extended to contain the origin.

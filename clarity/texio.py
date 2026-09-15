@@ -31,7 +31,9 @@ _CANDIDATES = [
         os.path.join(_HERE, "..", "..", "ffxiv_7_0_toolbox", "scripts", "texconv.exe")
     ),
 ]
-TEXCONV = next((c for c in _CANDIDATES if c and c != "none" and os.path.isfile(c)), _CANDIDATES[-1])
+TEXCONV: str = next(
+    (c for c in _CANDIDATES if c and c != "none" and os.path.isfile(c)), _CANDIDATES[-1] or ""
+)
 TEXCONV_GPU = os.environ.get("CLARITY_TEXCONV_GPU", "0")  # DXGI adapter index; 0 = the RTX here
 BC7, BC3, BC1, BGRA8 = 0x6432, 0x3431, 0x3420, 0x1450
 _probe = {}
@@ -48,7 +50,10 @@ def use_texconv():
 def is_debug_build(path=None):
     """A Debug texconv imports the debug CRT; it cannot create a D3D device without the SDK layers."""
     try:
-        with open(path or TEXCONV, "rb") as f:
+        exe = path or TEXCONV
+        if not exe:
+            return False
+        with open(exe, "rb") as f:
             return b"ucrtbased.dll" in f.read()
     except OSError:
         return False

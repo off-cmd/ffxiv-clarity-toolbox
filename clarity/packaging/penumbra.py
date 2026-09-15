@@ -9,6 +9,7 @@ Default collection.
 """
 
 import os
+from typing import Any
 
 from ..jsonio import read_json, write_json
 
@@ -219,7 +220,7 @@ def merge_penumbra(config_dir, mods_present, default_guid="b615f2fe-afef-4cb7-91
             "Modern Penumbra uses LiteDB: use the release installer, not legacy pack --penumbra-config"
         )
     so_path = os.path.join(config_dir, "sort_order.json")
-    so = {"Data": {}, "EmptyFolders": [], "LockedPaths": []}
+    so: dict[str, Any] = {"Data": {}, "EmptyFolders": [], "LockedPaths": []}
     if os.path.isfile(so_path):
         so = read_json(so_path)
     # Migrate the em-dash names: drop their sort entries (the folders are gone) so they do not
@@ -257,7 +258,7 @@ def merge_icon_twins(
             "Modern Penumbra uses LiteDB: use the release installer, not legacy pack --penumbra-config"
         )
     so_path = os.path.join(config_dir, "sort_order.json")
-    so = {"Data": {}, "EmptyFolders": [], "LockedPaths": []}
+    so: dict[str, Any] = {"Data": {}, "EmptyFolders": [], "LockedPaths": []}
     if os.path.isfile(so_path):
         so = read_json(so_path)
     coll_p = os.path.join(config_dir, "collections", interface_guid + ".json")

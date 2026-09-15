@@ -415,7 +415,7 @@ def find_game(root: str | None = None) -> str:
             return p
         raise FileNotFoundError(f"FFXIV_SQPACK is set but has no 'ffxiv' folder: {env}")
 
-    if _ok(root):
+    if root and _ok(root):
         return root
 
     if os.name == "nt":

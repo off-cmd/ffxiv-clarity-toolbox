@@ -46,7 +46,7 @@ import re
 
 import numpy as np
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # ULD coordinates are in BASE texture space. The shipped `_hr1` sheets are 2x, so every rectangle
 # has to be doubled before it addresses one. Verified on JobHudXBM1_hr1 (KB 05).
@@ -68,7 +68,7 @@ def _uldfile():
         return _MOD[0]
     mod = None
     try:
-        import uldfile as mod
+        import uldfile as mod  # ty: ignore[unresolved-import]
     except ImportError:
         import os
         import sys
@@ -82,7 +82,7 @@ def _uldfile():
             if cand not in sys.path:
                 sys.path.append(cand)
             try:
-                import uldfile as mod
+                import uldfile as mod  # ty: ignore[unresolved-import]
             except ImportError:
                 mod = None
     _MOD.append(mod)
@@ -145,7 +145,7 @@ def build_index(gd, stems, log=None, pathlist=None):
                 continue
             u = mod.load(gd, path)
         except Exception as e:
-            log.debug("%s: could not parse (%s); skipped", path, e)
+            logger.debug("%s: could not parse (%s); skipped", path, e)
             continue
         loaded += 1
         by_asset = {aid: p.rsplit("/", 1)[-1].lower() for aid, p in u.assets}
@@ -177,7 +177,7 @@ def rects_for(gd, tex_path, width=None, height=None, index=None, extra_ulds=()):
                 continue
             found_all.extend(mod.load(gd, path).parts_for(stem))
         except Exception as e:
-            log.debug("%s: could not parse (%s); skipped", path, e)
+            logger.debug("%s: could not parse (%s); skipped", path, e)
             continue
     out, seen = [], set()
     for _lid, _i, x, y, w, h in found_all:

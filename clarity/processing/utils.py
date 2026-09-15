@@ -1,6 +1,6 @@
 """Utility functions for processing FFXIV textures."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -21,7 +21,7 @@ def _u8(f: npt.NDArray[np.float32]) -> npt.NDArray[np.uint8]:
     return np.clip(np.rint(f * 255.0), 0, 255).astype(np.uint8)
 
 
-def nearest(ch: npt.NDArray[np.floating], scale: int) -> npt.NDArray[np.floating]:
+def nearest(ch: npt.NDArray[Any], scale: int) -> npt.NDArray[Any]:
     """Perform nearest-neighbor upscaling on a single channel."""
     return np.repeat(np.repeat(ch, scale, 0), scale, 1)
 

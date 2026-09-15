@@ -22,7 +22,7 @@ import numpy as np
 from .. import paths
 from ..jsonio import read_json
 
-DEFAULT_REGISTRY = {
+DEFAULT_REGISTRY: dict[str, str | None] = {
     "bc1clean": "1x_BC1-smooth2.pth",  # set to null in registry.json when the colour model removes BC artefacts itself
     "normal": "4x-Normal-RG0-BC7.pth",  # BC7 / uncompressed normal sources
     "normal_bc1": "4x-Normal-RG0-BC1.pth",  # BC1 normal sources (trained on exactly that degradation); falls back to "normal"
@@ -78,7 +78,7 @@ class Engine:
     def path(self, slot):
         if not self.models_dir or not self.registry.get(slot):
             return None
-        p = os.path.join(self.models_dir, self.registry[slot])
+        p = os.path.join(self.models_dir, str(self.registry[slot]))
         return p if os.path.isfile(p) else None
 
     def has(self, slot: str) -> bool:
@@ -156,13 +156,19 @@ class Engine:
                 except RuntimeError as e:  # CUDA OOM on a batch: fall back to one at a time
                     if "out of memory" not in str(e).lower() or len(chunk) == 1:
                         raise
-                    self.torch.cuda.empty_cache()
+                    self._torch().cuda.empty_cache()
                     out.extend(self._run_model(slot, i, scale) for i in chunk)
             return out
         return [self.run(slot, i, scale) for i in imgs]
 
+    def _torch(self):
+        """torch, for the paths that only run when a model was loaded."""
+        if self.torch is None:  # pragma: no cover - guarded by has()/model() before every call
+            raise RuntimeError("torch is not available; Engine.run() falls back to Lanczos")
+        return self.torch
+
     def _run_model(self, slot, img, scale):
-        torch = self.torch
+        torch = self._torch()
         m = self.model(slot)
         ms = m.scale
         batch = isinstance(img, (list, tuple))
@@ -196,7 +202,7 @@ class Engine:
         return ys if batch else ys[0]
 
     def _tiled(self, m, t, ms):
-        torch = self.torch
+        torch = self._torch()
         N, _C, H, W = t.shape
         tile, pad = self.tile, self.pad
         if tile + 2 * pad >= H and tile + 2 * pad >= W:
@@ -246,7 +252,9 @@ def lanczos(img, scale):
     out = np.empty((nh, nw, C), np.float32)
     for c in range(C):
         im = Image.fromarray((np.clip(img[..., c], 0, 1) * 65535).astype(np.uint16), "I;16")
-        out[..., c] = np.asarray(im.resize((nw, nh), Image.LANCZOS), np.float32) / 65535.0
+        out[..., c] = (
+            np.asarray(im.resize((nw, nh), Image.Resampling.LANCZOS), np.float32) / 65535.0
+        )
     return out
 
 

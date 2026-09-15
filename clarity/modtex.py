@@ -27,7 +27,7 @@ from . import texio
 from .jsonio import read_json, write_json
 from .processing import roles
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def contained(base, rel):
@@ -61,7 +61,7 @@ def mod_files(mod_dir, log=None):
         try:
             j = read_json(os.path.join(mod_dir, name))
         except (OSError, ValueError) as e:
-            log.debug("%s: not a readable JSON file (%s); skipped", name, e)
+            logger.debug("%s: not a readable JSON file (%s); skipped", name, e)
             continue
         blocks = [j] if "Files" in j else []
         for o in j.get("Options", []):

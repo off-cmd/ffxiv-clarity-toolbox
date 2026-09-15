@@ -226,6 +226,7 @@ def encode(rgba, modes=(6, 5), chunk=16384):
                     np.where(better, lo, best[1]),
                     np.where(better, hi, best[2]),
                 ]
+        assert best is not None
         out[s : s + chunk, 0] = best[1]
         out[s : s + chunk, 1] = best[2]
     return out.tobytes()

@@ -8,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import time
+from typing import Any
 
 from .. import paths
 from ..processing import roles
@@ -201,7 +202,7 @@ def export(a):
                     else {"native": "Native", "2x": "Up to 2x", "4x": "Up to 4x"}[profile]
                 )
                 ident = f"clarity-{family}-{profile}"
-                entry = {
+                entry: dict[str, Any] = {
                     "id": ident,
                     "package": "Clarity - " + group,
                     "family": family,

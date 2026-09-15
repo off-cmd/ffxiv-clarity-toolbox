@@ -46,7 +46,7 @@ def cmd_estimate(a):
         "%-14s %-7s %-8s %7s %10s %10s %10s %10s"
         % ("family", "role", "status", "n", "src MB", "native MB", "2x MB", "4x MB")
     )
-    tot = {"src": 0, "native": 0, "2x": 0, "4x": 0}
+    tot: dict[str, float] = {"src": 0.0, "native": 0.0, "2x": 0.0, "4x": 0.0}
     for family, role, status, n, b in man.summary():
         if role in ("id", "skip", "other"):
             print(
@@ -126,7 +126,7 @@ def estimate_output_bytes(man, families, top_override=None, since=None, status="
 
     families this run will actually walk.
     """
-    tot = {"native": 0.0, "2x": 0.0, "4x": 0.0}
+    tot: dict[str, float] = {"native": 0.0, "2x": 0.0, "4x": 0.0}
     n = 0
     q = "SELECT family,w,h,fmt FROM tex WHERE status=?"
     args = [status]
@@ -384,7 +384,7 @@ def cmd_run(a):
                 flush=True,
             )
             t1 = time.time()
-            imgs = roles.process_top_batch(engine, role, None, [r[7] for r in ready], ready[0][2])
+            imgs = roles.process_top_batch(engine, role, fam, [r[7] for r in ready], ready[0][2])
             t2 = time.time()
             per = (t2 - t1) / len(ready)
             for (path, mod, top, w, h, fmt, hdr, _), img in zip(ready, imgs, strict=True):

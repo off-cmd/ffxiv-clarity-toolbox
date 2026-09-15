@@ -299,8 +299,18 @@ def test_encode_tiers_halves_once_per_offset(fmt) -> None:
         if fmt == texio.BGRA8:
             np.testing.assert_array_equal(top, chain[k])
         else:
+            # What encode_tiers claims is that tier k's top mip is float_chain[k] -- the same
+            # pixels as before, encoded once instead of once per tier. The test of that claim
+            # is that the tier is no worse than encoding that mip on its own, NOT a fixed
+            # tolerance: the fixed one was calibrated against the numpy encoder and failed on
+            # Windows, where texconv does the work and loses more on a 4x2 surface. This form
+            # still catches a real disagreement between texconv's mip chain and float_chain,
+            # because that would push the tier's error above the direct encode's.
             mean, peak = _err(top, chain[k])
-            assert mean < 1.5 and peak <= 4, (k, mean, peak)
+            _hdr_direct, direct = texio.read(texio.encode(chain[k], fmt, mips=1))
+            ref_mean, ref_peak = _err(direct, chain[k])
+            assert mean <= ref_mean + 0.5, (k, mean, ref_mean)
+            assert peak <= ref_peak + 2, (k, peak, ref_peak)
         # The tier's last mip is the 1x1 tail of the same chain.
         assert texdecode.decode(out[k], mips - 1).shape == (1, 1, 4)
 
@@ -334,6 +344,16 @@ def test_encode_tiers_offset_zero_matches_encode_to_within_rounding() -> None:
     for mip in (1, 2, 3):
         mean, peak = _err(texdecode.decode(via_tiers, mip), texdecode.decode(via_encode, mip))
         assert peak <= 1, (mip, mean, peak)
+
+
+def test_unsupported_format_is_refused_the_same_way_on_every_platform() -> None:
+    """Regression: the format lookup sat *inside* the texconv branch, so an unknown format
+    raised KeyError on Windows and ValueError off it. CI runs on Linux and never saw it.
+    """
+    assert 0x9999 not in texio.TEXCONV_FORMAT
+    for call in (texio.encode, texio.encode_tiers):
+        with pytest.raises(ValueError, match="format 0x9999"):
+            call(_noise(4, 4), 0x9999)
 
 
 def test_encode_tiers_rejects_an_unknown_format() -> None:

@@ -227,6 +227,14 @@ def _texconv(rgba, fmt_name, mips, want_text=False):
     raise RuntimeError("texconv failed after %d tries: %s" % (TEXCONV_TRIES, last))
 
 
+# The formats texconv is asked for, by .tex format code. This is also the set of block
+# formats this module can encode at all: a format outside it must be refused the same way
+# on every platform, which is why the lookup happens before the texconv branch rather than
+# inside it (on Windows an unknown format used to reach the dict and raise KeyError, while
+# on Linux it fell through to the ValueError below -- so the error depended on the machine).
+TEXCONV_FORMAT = {BC7: "BC7_UNORM", BC3: "BC3_UNORM", BC1: "BC1_UNORM"}
+
+
 def encode(rgba, fmt=BC7, mips=None, attributes=None):
     """RGBA uint8 (h, w, 4) -> .tex bytes in `fmt` with a full mip chain (or `mips` levels)."""
     a = np.ascontiguousarray(rgba, np.uint8)
@@ -236,8 +244,10 @@ def encode(rgba, fmt=BC7, mips=None, attributes=None):
     attr = kb.texwrite.ATTR_2D if attributes is None else attributes
     if fmt == BGRA8:
         return kb.texwrite.write(a, attributes=attr, mips=mips)
+    if fmt not in TEXCONV_FORMAT:
+        raise ValueError(f"no encoder for format {fmt:#x}")
     if use_texconv():
-        name = {BC7: "BC7_UNORM", BC3: "BC3_UNORM", BC1: "BC1_UNORM"}[fmt]
+        name = TEXCONV_FORMAT[fmt]
         dds = _texconv(a, name, mips)
         blocks = _dds_split(dds, kb.texwrite.BLOCK_BYTES[fmt], w, h, mips)
         return kb.texwrite.write_blocks(fmt, blocks, w, h, attr)
@@ -258,7 +268,13 @@ def encode(rgba, fmt=BC7, mips=None, attributes=None):
             d = buf.getvalue()
             blocks.append(_dds_split(d, 16, L.shape[1], L.shape[0], 1)[0])
         return kb.texwrite.write_blocks(BC3, blocks, w, h, attr)
-    raise ValueError(f"no encoder for format {fmt:#x}")
+    # Reachable only for a format in TEXCONV_FORMAT with no pure-Python encoder -- BC1 --
+    # on a machine where texconv is unavailable. Say that, rather than "no encoder", which
+    # reads as "this format is not supported" and sends the reader to the wrong place.
+    raise ValueError(
+        f"format {fmt:#x} can only be encoded by texconv, which is not available here "
+        "(Windows only; see `clarity probe`)"
+    )
 
 
 def float_chain(rgba_u8, n):
@@ -314,10 +330,12 @@ def encode_tiers(rgba_top, fmt=BC7, attributes=None, offsets=(0,), keep_mips=Tru
     h, w = a.shape[:2]
     n = full_mips(w, h)
     attr = kb.texwrite.ATTR_2D if attributes is None else attributes
+    if fmt != BGRA8 and fmt not in TEXCONV_FORMAT:
+        raise ValueError(f"no chain encoder for format {fmt:#x}")
     if fmt == BGRA8:
         levels = _bgra_levels(float_chain(a, n))
     elif use_texconv():
-        name = {BC7: "BC7_UNORM", BC3: "BC3_UNORM", BC1: "BC1_UNORM"}[fmt]
+        name = TEXCONV_FORMAT[fmt]
         levels = _dds_split(
             _texconv(a, name, 0), kb.texwrite.BLOCK_BYTES[fmt], w, h, n
         )  # -m 0: the full chain

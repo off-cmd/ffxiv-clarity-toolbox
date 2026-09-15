@@ -1,0 +1,37 @@
+[project]
+name = "XIVUpscaler"
+version = "7.56.0"
+description = "Tiered, material-aware upscale of every vanilla FFXIV texture (chara, world, UI) into Penumbra mods"
+readme = "README.md"
+# texture2ddecoder (BC7 decode) ships wheels up to 3.12 — pin the runtime.
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy>=1.26",
+    "pillow>=10.0",
+    "texture2ddecoder>=1.0.5",
+    "tqdm>=4.66",
+    # GPU stack — cu128 index pinned below; torch/torchvision/spandrel only needed for `run`
+    "torch>=2.7",
+    "torchvision>=0.22",
+    "spandrel>=0.4",
+    "safetensors>=0.4",
+]
+
+[project.scripts]
+clarity = "clarity.cli:main"
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["clarity"]

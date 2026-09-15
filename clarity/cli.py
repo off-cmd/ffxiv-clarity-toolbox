@@ -729,9 +729,6 @@ DECODABLE = {
     "L8",
     "A8",
 }
-PROCESSED_ROLES = ("normal", "mask", "color", "icon", "ui")
-
-
 def cmd_reclassify(a):
     """Re-run classify() over rows already in the manifest and write back what changed.
 
@@ -1122,7 +1119,7 @@ def cmd_audit(a):
     man = mf.Manifest(a.db)
     q = lambda s, *p: man.db.execute(s, p).fetchall()
     print("status:", dict(q("SELECT status, COUNT(*) FROM tex GROUP BY status")))
-    roles_in = ",".join("'%s'" % r for r in PROCESSED_ROLES)
+    roles_in = ",".join("'%s'" % r for r in mf.PROCESSED_ROLES)
 
     print("\nformats with no decoder, in a role the run processes:")
     bad = q(

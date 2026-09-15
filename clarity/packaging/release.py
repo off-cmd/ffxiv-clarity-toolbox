@@ -139,17 +139,9 @@ def select_product(row, root, profile):
     return None, None
 
 
-RESERVED_PATHS = {
-    "common/graphics/texture/dummy.tex",
-    "chara/common/texture/white.tex",
-    "chara/common/texture/black.tex",
-    "chara/common/texture/id_16.tex",
-    "chara/common/texture/red.tex",
-    "chara/common/texture/green.tex",
-    "chara/common/texture/blue.tex",
-    "chara/common/texture/null_normal.tex",
-    "chara/common/texture/skin_mask.tex",
-}
+# The placeholder textures every family shares; never shipped in a mod. One
+# definition, owned by the packer.
+RESERVED_PATHS = pack.RESERVED_PATHS
 
 
 def export(a):

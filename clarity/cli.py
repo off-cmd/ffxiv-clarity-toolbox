@@ -867,8 +867,13 @@ def cmd_requeue(a):
     if a.dry_run or not total:
         print("(dry run - nothing written)" if a.dry_run else "(nothing to do)")
         return 0
+    # Keep the `changed at <version>` marker: `run --since` selects the patch delta by
+    # it, so a changed row that failed and is re-queued here must stay in that delta.
+    # Every other note describes the done/failed/skipped state being undone.
     man.db.execute(
-        "UPDATE tex SET status='planned', tiers='', note='' WHERE " + sql, args
+        "UPDATE tex SET status='planned', tiers='', "
+        "note=CASE WHEN note LIKE 'changed at %' THEN note ELSE '' END WHERE " + sql,
+        args,
     )
     man.commit()
     print("re-queued %d row(s); rerun `clarity run` to redo them" % total)
@@ -1046,9 +1051,8 @@ def cmd_fingerprint(a):
                 )
             if a.requeue:
                 man.db.executemany(
-                    "UPDATE tex SET status='planned', tiers='', note='changed at %s' WHERE path=?"
-                    % version.replace("'", ""),
-                    [(p,) for p, _f, _o, _n, _ov in changed],
+                    "UPDATE tex SET status='planned', tiers='', note=? WHERE path=?",
+                    [("changed at " + version, p) for p, _f, _o, _n, _ov in changed],
                 )
                 man.commit()
                 print(
@@ -1163,10 +1167,10 @@ def cmd_audit(a):
         )
     )
 
-    print("\nat or above the 8192 output cap (top tier drops a step):")
+    print("\nat or above the %d output cap (top tier drops a step):" % roles.MAX_EDGE_OUT)
     for w, h, n in q(
-        "SELECT w, h, COUNT(*) FROM tex WHERE MAX(w, h) * 4 > 8192 AND role IN (%s)"
-        " GROUP BY w, h ORDER BY 3 DESC LIMIT 6" % roles_in
+        "SELECT w, h, COUNT(*) FROM tex WHERE MAX(w, h) * 4 > %d AND role IN (%s)"
+        " GROUP BY w, h ORDER BY 3 DESC LIMIT 6" % (roles.MAX_EDGE_OUT, roles_in)
     ):
         print("  %dx%-5d %6d" % (w, h, n))
 

@@ -1,6 +1,7 @@
 """`uv run clarity <command>` — see README.md for the runbook."""
 
 import argparse
+import logging
 import os
 import pathlib
 import sys
@@ -1136,6 +1137,12 @@ def cmd_audit(a):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="clarity")
     ap.add_argument("--db", default=paths.DB, help="manifest database (default: %(default)s)")
+    ap.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="debug-level diagnostics on stderr (per-texture timings, skipped inputs, tracebacks)",
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("plan")
     p.add_argument(
@@ -1204,7 +1211,6 @@ def main(argv=None):
         default=32,
         help="same-sized icon/UI textures per model batch (1 disables batching)",
     )
-    p.add_argument("--verbose", action="store_true")
     p.set_defaults(fn=cmd_run)
     # pack, qa and modup write to (or read from) the same mod root as run; one default for all of them.
     p = sub.add_parser("pack")
@@ -1316,6 +1322,13 @@ def main(argv=None):
     p.add_argument("--penumbra-config")
     p.set_defaults(fn=cmd_modup)
     a = ap.parse_args(argv)
+    # Progress and results go to stdout with print(); anything a user would only want while
+    # chasing a problem goes through logging, which --verbose turns on.
+    logging.basicConfig(
+        level=logging.DEBUG if a.verbose else logging.WARNING,
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+    )
     return a.fn(a) or 0
 
 

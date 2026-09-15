@@ -231,7 +231,8 @@ class ReleaseTests(unittest.TestCase):
             ):
                 release.export(args)
             folder = (
-                root / "releases/2.50.0/Clarity - World/General Environments - everyday"
+                root
+                / "releases/2.50.0-preview.1/Clarity - World/General Environments - everyday"
             )
             meta_data = json.loads((folder / "meta.json").read_text())
             mappings = meta_data["DefaultData"]["Files"]
@@ -244,7 +245,7 @@ class ReleaseTests(unittest.TestCase):
             # An immutable version cannot be overwritten, and changed game resources
             # cannot be silently carried into a stable release.
             args.game = "2.51"
-            args.preview = 0
+            args.preview = None
             with (
                 patch("clarity.cli.src_fingerprint", return_value="changed"),
                 patch.object(kb, "game", return_value=fakegame),
@@ -252,7 +253,17 @@ class ReleaseTests(unittest.TestCase):
             ):
                 with self.assertRaises(RuntimeError):
                     release.export(args)
-            self.assertFalse((root / "releases/2.5.0/release.json").exists())
+            # A failed export leaves no directory under the final version name, so
+            # the same version can be retried once the sources are verified again.
+            self.assertFalse((root / "releases/2.51.0").exists())
+            with (
+                patch("clarity.cli.src_fingerprint", return_value="verified"),
+                patch.object(kb, "game", return_value=fakegame),
+                patch.object(kb.sqpack, "game_version", return_value="build"),
+            ):
+                release.export(args)
+            self.assertTrue((root / "releases/2.51.0/release.json").exists())
+            self.assertFalse((root / "releases/2.51.0.building").exists())
 
 
 if __name__ == "__main__":

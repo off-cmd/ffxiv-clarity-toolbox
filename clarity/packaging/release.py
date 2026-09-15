@@ -66,14 +66,19 @@ def version_key(version):
     return (int(major), int(minor), int(revision), preview is None, int(preview or 0))
 
 
-def version_for(game, revision):
+def version_for(game, revision, preview=None):
     m = re.fullmatch(r"(\d+)\.(\d{1,2})(?:h(\d+))?", game)
     if not m or revision < 0:
         raise ValueError(
             "Expected game patch such as 7.56 or 7.56h1 and nonnegative revision"
         )
+    if preview is not None and preview < 1:
+        raise ValueError("Preview number must be a positive integer")
     major, minor, hotfix = m.groups()
-    return f"{int(major)}.{int(minor.ljust(2, '0'))}.{revision}"
+    version = f"{int(major)}.{int(minor.ljust(2, '0'))}.{revision}"
+    if preview is not None:
+        version += f"-preview.{preview}"
+    return version
 
 
 def requested_tier(family, role, path, profile="everyday"):
@@ -142,10 +147,17 @@ RESERVED_PATHS = {
 
 
 def export(a):
-    version = version_for(a.game, a.revision)
-    dest = pathlib.Path(a.destination) / version
+    version = version_for(a.game, a.revision, a.preview)
+    final = pathlib.Path(a.destination) / version
+    if final.exists():
+        raise ValueError(f"Immutable export already exists: {final}")
+    # Everything is written under a staging name and renamed into place only once
+    # release.json exists. An export that fails part-way (stale sources, a bad
+    # copy) therefore never leaves a directory that blocks the next attempt at the
+    # same version, and a directory named "<version>" is complete by construction.
+    dest = final.with_name(final.name + ".building")
     if dest.exists():
-        raise ValueError(f"Immutable export already exists: {dest}")
+        shutil.rmtree(dest)
     for previous in pathlib.Path(a.destination).glob("*/release.json"):
         old = json.loads(previous.read_text(encoding="utf-8"))["version"]
         if version_key(version) <= version_key(old):
@@ -174,7 +186,7 @@ def export(a):
                 r for r in rows if r["family"] == family and r["status"] != "skipped"
             ]
             for profile in a.profile:
-                if profile == "4x" and roles.POLICY[family][0] != "4x":
+                if profile == "4x" and roles.POLICY.get(family, (None, 0))[0] != "4x":
                     continue
                 products = []
                 missing = []
@@ -339,7 +351,8 @@ def export(a):
     report["total_missing"] = sum(len(v["missing"]) for v in report["variants"])
     dump(dest / "release.json", report)
     dump(dest / "release-progress.json", {"state": "complete", "version": version})
-    print("Release:", dest)
+    dest.rename(final)
+    print("Release:", final)
     return 0
 
 
@@ -358,6 +371,14 @@ def add_parser(sub):
         "--profile", action="append", choices=["everyday", "native", "2x", "4x"]
     )
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--preview",
+        type=int,
+        default=None,
+        metavar="N",
+        help="build a preview release (version X.Y.Z-preview.N) that may ship with "
+        "missing or source-changed products; a stable release refuses both",
+    )
 
     def run(a):
         a.profile = a.profile or ["everyday"]

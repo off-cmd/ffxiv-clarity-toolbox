@@ -98,7 +98,8 @@ def main():
     print(f"Loading FFXIV sqpack indices from {FFXIV_DIR}...")
     game = sqpack.GameData(FFXIV_DIR)
 
-    # Inject our game instance into clarity.kbtools so texio.read() works
+    # Hand the game instance to clarity.ffxiv so texio.read() resolves paths without
+    # re-locating the install.
     from clarity import ffxiv as kb
 
     kb._GD = game

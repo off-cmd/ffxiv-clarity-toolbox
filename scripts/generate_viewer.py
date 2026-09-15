@@ -1,10 +1,14 @@
 import glob
 import json
 import os
+import sys
+
+from clarity import paths
+
+DEFAULT_RESULTS = os.path.join(paths.TOOL_ROOT, "benchmarks", "color", "results")
 
 
-def generate_viewer():
-    results_dir = r"P:\workspaces\ffxiv-clarity-toolbox\benchmarks\color\results"
+def generate_viewer(results_dir=DEFAULT_RESULTS):
     output_html = os.path.join(results_dir, "viewer.html")
 
     categories = sorted(
@@ -249,4 +253,4 @@ def generate_viewer():
 
 
 if __name__ == "__main__":
-    generate_viewer()
+    generate_viewer(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_RESULTS)

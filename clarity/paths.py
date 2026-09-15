@@ -9,7 +9,6 @@
     ├── vendor-tools\\texconv\\texconv.exe    a *release* DirectXTex texconv
     └── hash-manifests\\                     texture-fingerprints.tsv (exported by `clarity fingerprint --export`)
 
-    P:\\projects\\ffxiv-datamining\\scripts-local\\ffxiv-kbtools\\   sqpack, texfile, texdecode ... (shared)
 
 Every one of these is a default, not a rule: the CLARITY_* variable in the right-hand column wins.
 The layout is walked from this file's location, so the package works wherever the project is
@@ -21,8 +20,8 @@ import os
 from typing import Optional
 
 PACKAGE = os.path.dirname(os.path.abspath(__file__))
-TOOL_ROOT = os.path.normpath(os.path.join(PACKAGE, ".."))  # ffxiv-clarity-toolbox
-PROJECT = TOOL_ROOT  # ffxiv-clarity-toolbox
+TOOL_ROOT = os.path.normpath(os.path.join(PACKAGE, ".."))  # the repository root
+PROJECT = TOOL_ROOT
 PROJECTS = os.path.normpath(os.path.join(PROJECT, ".."))  # P:\workspaces
 
 
